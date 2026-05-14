@@ -7,7 +7,6 @@
  * For App Router, use app-providers-app-dir.tsx instead.
  */
 
-import process from "node:process";
 import type { ParsedUrlQuery } from "node:querystring";
 import { FeatureProvider } from "@calcom/features/flags/context/provider";
 import { useFlags } from "@calcom/web/modules/feature-flags/hooks/useFlags";
@@ -245,7 +244,7 @@ function getThemeProviderProps({
     // next-themes doesn't listen to changes on storageKey. So we need to force a re-render when storageKey changes
     // This is how login to dashboard soft navigation changes theme from light to dark
     key: storageKey,
-    attribute: "class",
+    attribute: "class" as const,
   };
 }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { BookingStatus } from "@calcom/prisma/enums";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import type { RouterOutputs } from "@calcom/trpc/react";
@@ -293,7 +294,7 @@ function TodayAppointments() {
           title={b.title}
           time={new Date(b.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           attendee={b.attendees?.[0]?.name ?? "Guest"}
-          status={b.status === "accepted" ? "confirmed" : "pending"}
+          status={b.status === BookingStatus.ACCEPTED ? "confirmed" : "pending"}
         />
       ))}
     </div>
@@ -342,7 +343,7 @@ function ThisWeekSection() {
             title={b.title}
             time={`${start.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} · ${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
             attendee={b.attendees?.[0]?.name ?? "Guest"}
-            status={b.status === "accepted" ? "confirmed" : "pending"}
+            status={b.status === BookingStatus.ACCEPTED ? "confirmed" : "pending"}
           />
         );
       })}
