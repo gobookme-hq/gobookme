@@ -75,6 +75,7 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
           <DialogPrimitive.Overlay className="fadeIn fixed inset-0 z-50 bg-neutral-800/70 transition-opacity dark:bg-neutral-800/80" />
         )}
         <DialogPrimitive.Content
+          aria-describedby={props.description ? "dialog-description" : undefined}
           {...props}
           onPointerDownOutside={(e) => {
             if (preventCloseOnOutsideClick) {

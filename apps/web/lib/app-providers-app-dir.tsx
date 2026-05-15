@@ -13,6 +13,7 @@ import type { Session } from "next-auth";
 import { useSession } from "next-auth/react";
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
+import { useEffect } from "react";
 import { getThemeProviderProps } from "./getThemeProviderProps";
 
 // Workaround for https://github.com/vercel/next.js/issues/8592
@@ -65,18 +66,23 @@ const CalcomThemeProvider = (props: CalcomThemeProps) => {
     searchParams,
   });
 
+  // Inject dark color-scheme style on client only (styled-jsx generates <script> tags in App Router, causing React warnings)
+  useEffect(() => {
+    if (isEmbedMode) return;
+    const id = "cal-dark-color-scheme";
+    if (!document.getElementById(id)) {
+      const style = document.createElement("style");
+      style.id = id;
+      style.textContent = ".dark { color-scheme: dark; }";
+      document.head.appendChild(style);
+    }
+    return () => {
+      document.getElementById(id)?.remove();
+    };
+  }, [isEmbedMode]);
+
   return (
     <ThemeProvider key={key} {...themeProviderProps}>
-      {/* Embed Mode can be detected reliably only on client side here as there can be static generated pages as well which can't determine if it's embed mode at backend */}
-      {/* color-scheme makes background:transparent not work in iframe which is required by embed. */}
-      {typeof window !== "undefined" && !isEmbedMode && (
-        // eslint-disable-next-line react/no-unknown-property
-        <style jsx global>{`
-          .dark {
-            color-scheme: dark;
-          }
-        `}</style>
-      )}
       {props.children}
     </ThemeProvider>
   );
