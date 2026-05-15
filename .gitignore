@@ -32,6 +32,11 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+dataconnect_diff_debug.txt
+diff_output*.txt
+scratch_diff.txt
+.agents/
+.codex/
 
 # local env files
 .env.local
@@ -121,3 +126,8 @@ _pagefind/
 # Firebase
 .firebaserc
 .firebase/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
