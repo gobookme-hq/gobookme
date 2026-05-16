@@ -14,6 +14,13 @@ A custom-built directory engine located in `packages/features/business-listings`
 - **Professional Submission**: A streamlined onboarding flow for businesses to register and manage their presence.
 - **Analytics & Insights**: Built-in tracking for listing performance and user engagement.
 
+### 💳 Stripe Connect Payments
+Business owners can accept payments directly from clients at the time of booking.
+- **Self-Serve Onboarding**: Owners connect their Stripe account from Settings → Payments via OAuth — no manual key sharing required.
+- **Per-Booking Payments**: Enable "Require payment" on any event type and set a price; funds transfer directly to the business's Stripe account.
+- **Payment Page**: Clients complete payment via a Stripe-powered checkout after booking (`/payment/[uid]`).
+- **Hold & Capture**: Supports both immediate charge (`ON_BOOKING`) and card-hold (`HOLD`) payment options.
+
 ### 🔌 Firebase Data Connect Integration
 GoBookMe is a pioneer in using **Firebase Data Connect**, Google's latest managed GraphQL service.
 - **Schema-First Development**: Data models are defined in `dataconnect/schema/schema.gql`.
@@ -59,6 +66,18 @@ Copy the example environment file and fill in your details:
 cp .env.example .env
 ```
 
+Key environment variables to configure:
+
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `NEXTAUTH_SECRET` | Random secret — `openssl rand -base64 32` |
+| `CALENDSO_ENCRYPTION_KEY` | 32-char AES key — `openssl rand -base64 24` |
+| `STRIPE_PRIVATE_KEY` | Stripe secret key (`sk_live_...` or `sk_test_...`) |
+| `NEXT_PUBLIC_STRIPE_PUBLIC_KEY` | Stripe publishable key (`pk_live_...` or `pk_test_...`) |
+| `STRIPE_CLIENT_ID` | Stripe Connect platform ID (`ca_...`) — from Stripe Dashboard → Connect → Settings |
+| `STRIPE_WEBHOOK_SECRET_APPS` | Webhook secret (`whsec_...`) — from Stripe Dashboard → Webhooks |
+
 ### 4. Database Setup
 ```bash
 yarn prisma db push
@@ -79,13 +98,23 @@ Open [http://localhost:3000](http://localhost:3000) to see the application in ac
 
 ---
 
+## 💳 Stripe Setup (for payments)
+
+1. Create a [Stripe account](https://stripe.com) and enable Connect in your Dashboard.
+2. Copy your **Platform ID** (`ca_...`) from Stripe Dashboard → Connect → Settings → `STRIPE_CLIENT_ID`.
+3. Add a webhook endpoint pointing to `https://yourdomain.com/api/integrations/stripepayment/webhook` and set `STRIPE_WEBHOOK_SECRET_APPS`.
+   - Required events: `payment_intent.succeeded`, `payment_intent.payment_failed`, `checkout.session.completed`, `account.updated`
+4. Business owners connect their Stripe accounts from **Settings → Payments** in the app.
+
+---
+
 ## 🧪 Testing & Quality
 
 GoBookMe is built with reliability in mind:
-- **Unit Tests**: `yarn test`
-- **E2E Tests**: `yarn test-e2e`
-- **Linting**: `yarn lint`
-- **Formatting**: `yarn format`
+- **Type checking**: `yarn type-check:ci --force`
+- **Unit Tests**: `TZ=UTC yarn test`
+- **E2E Tests**: `PLAYWRIGHT_HEADLESS=1 yarn e2e`
+- **Linting**: `yarn biome check --write .`
 
 ---
 

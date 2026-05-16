@@ -6,7 +6,6 @@ import { dir } from "i18next";
 import { Inter } from "next/font/google";
 import localFont from "next/font/local";
 import { cookies, headers } from "next/headers";
-
 import type React from "react";
 
 import "../styles/globals.css";
@@ -120,6 +119,27 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             --font-cal: ${calFont.style.fontFamily.replace(/'/g, "")};
           }
         `}</style>
+        {/* Runs before hydration to prevent FOUC; mirrors CalcomThemeProvider's storageKey logic. */}
+        <script
+          nonce={nonce}
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: intentional pre-hydration FOUC prevention, no user data involved
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{
+var d=document.documentElement,p=window.location.pathname,t=p.split('/').filter(Boolean);
+var app=['event-types','bookings','availability','teams','apps','settings','workflows','insights','video','home','refer','enterprise','more','org','auth','api'];
+var key;
+if(!t.length){key='booking-theme:/';}
+else if(app.indexOf(t[0])!==-1){key='app-theme';}
+else if(t[0]==='d'&&t[1]){key='booking-theme:'+t[1];}
+else if(t[0]==='team'&&t[1]){key='booking-theme:'+t[1];}
+else{key='booking-theme:'+t[0];}
+var s=localStorage.getItem(key),dark;
+if(!s||s==='system'){dark=window.matchMedia('(prefers-color-scheme: dark)').matches;}
+else{dark=s==='dark';}
+if(dark)d.classList.add('dark');
+}catch(e){}})()`,
+          }}
+        />
       </head>
       <body
         className="dark:bg-default bg-subtle antialiased"
@@ -143,13 +163,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <IconSprites />
         <SpeculationRules
           // URLs In Navigation
-          prerenderPathsOnHover={[
-            "/event-types",
-            "/availability",
-            "/bookings/upcoming",
-            "/teams",
-            "/apps",
-          ]}
+          prerenderPathsOnHover={["/event-types", "/availability", "/bookings/upcoming", "/teams", "/apps"]}
         />
 
         <Providers isEmbed={isEmbed} nonce={nonce} country={country}>

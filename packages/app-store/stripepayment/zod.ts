@@ -1,7 +1,5 @@
-import { z } from "zod";
-
 import { RefundPolicy } from "@calcom/lib/payment/types";
-
+import { z } from "zod";
 import { eventTypeAppCardZod } from "../eventTypeAppCardZod";
 import { paymentOptions } from "./lib/constants";
 
@@ -36,4 +34,9 @@ export const appKeysSchema = z.object({
   client_secret: z.string().startsWith("sk_").min(1),
   public_key: z.string().startsWith("pk_").min(1),
   webhook_secret: z.string().startsWith("whsec_").min(1),
+});
+
+export const connectAppKeysSchema = appKeysSchema.pick({
+  client_id: true,
+  client_secret: true,
 });

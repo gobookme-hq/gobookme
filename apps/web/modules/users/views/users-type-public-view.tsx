@@ -1,16 +1,16 @@
 "use client";
 
+import type { CustomClassNames } from "@calcom/features/bookings/Booker/types";
+import { getBookerWrapperClasses } from "@calcom/features/bookings/Booker/utils/getBookerWrapperClasses";
+import { BookerWebWrapper as Booker } from "@calcom/web/modules/bookings/components/BookerWebWrapper";
+import BookingPageErrorBoundary from "@components/error/BookingPageErrorBoundary";
+import type { inferSSRProps } from "@lib/types/inferSSRProps";
+import type { getServerSideProps } from "@server/lib/[user]/[type]/getServerSideProps";
 import type { EmbedProps } from "app/WithEmbedSSR";
 import { useSearchParams } from "next/navigation";
-
-import { BookerWebWrapper as Booker } from "@calcom/web/modules/bookings/components/BookerWebWrapper";
-import { getBookerWrapperClasses } from "@calcom/features/bookings/Booker/utils/getBookerWrapperClasses";
-
-import type { inferSSRProps } from "@lib/types/inferSSRProps";
-
-import BookingPageErrorBoundary from "@components/error/BookingPageErrorBoundary";
-
-import type { getServerSideProps } from "@server/lib/[user]/[type]/getServerSideProps";
+import { GBM_DARK_TOKENS, GBM_LIGHT_TOKENS } from "~/theme/gbm-tokens";
+import { ThemeProvider, useGbmTheme } from "~/theme/ThemeProvider";
+import { ThemeToggle } from "~/theme/ThemeToggle";
 
 export type PageProps = inferSSRProps<typeof getServerSideProps> & EmbedProps;
 
@@ -24,32 +24,65 @@ export const getMultipleDurationValue = (
   return defaultValue;
 };
 
-function Type({ slug, user, isEmbed, booking, isBrandingHidden, eventData, orgBannerUrl }: PageProps) {
+// Tailwind class overrides for monospace typography and rounder date cell shapes.
+const GBM_BOOKING_CLASSNAMES: CustomClassNames = {
+  datePickerCustomClassNames: {
+    datePickerTitle: "!font-mono",
+    datePickerDays: "!font-mono !text-[11px] !uppercase !tracking-wider",
+    datePickerDatesActive: "!rounded-xl",
+    datePickerToggle: "!font-mono",
+  },
+  eventMetaCustomClassNames: {
+    eventMetaTitle: "!font-mono !tracking-tight",
+  },
+  availableTimeSlotsCustomClassNames: {
+    availableTimeSlotsTitle: "!font-mono !text-xs !uppercase !tracking-widest",
+    availableTimes: "!font-mono",
+  },
+};
+
+function TypeContent({ slug, user, isEmbed, booking, isBrandingHidden, eventData, orgBannerUrl }: PageProps) {
   const searchParams = useSearchParams();
+  const { isDark } = useGbmTheme();
 
   return (
-    <BookingPageErrorBoundary>
-      <main className={getBookerWrapperClasses({ isEmbed: !!isEmbed })}>
-        <Booker
-          username={user}
-          eventSlug={slug}
-          bookingData={booking}
-          hideBranding={isBrandingHidden}
-          eventData={eventData}
-          entity={{ ...eventData.entity, eventTypeId: eventData?.id }}
-          durationConfig={eventData.metadata?.multipleDuration}
-          orgBannerUrl={orgBannerUrl}
-          /* TODO: Currently unused, evaluate it is needed-
-           *       Possible alternative approach is to have onDurationChange.
-           */
-          duration={getMultipleDurationValue(
-            eventData.metadata?.multipleDuration,
-            searchParams?.get("duration"),
-            eventData.length
-          )}
-        />
-      </main>
-    </BookingPageErrorBoundary>
+    <div
+      className="min-h-[calc(100dvh)] bg-zinc-50 dark:bg-[#09090b]"
+      style={isDark ? GBM_DARK_TOKENS : GBM_LIGHT_TOKENS}>
+      {/* Fixed bottom-right avoids the booker's fixed top-right layout toggle */}
+      {!isEmbed && <ThemeToggle className="fixed bottom-4 right-4 z-50" />}
+      <BookingPageErrorBoundary>
+        <main
+          className={
+            isEmbed ? getBookerWrapperClasses({ isEmbed: true }) : "flex min-h-[calc(100dvh)] items-center justify-center"
+          }>
+          <Booker
+            username={user}
+            eventSlug={slug}
+            bookingData={booking}
+            hideBranding={isBrandingHidden}
+            eventData={eventData}
+            entity={{ ...eventData.entity, eventTypeId: eventData?.id }}
+            durationConfig={eventData.metadata?.multipleDuration}
+            orgBannerUrl={orgBannerUrl}
+            customClassNames={GBM_BOOKING_CLASSNAMES}
+            duration={getMultipleDurationValue(
+              eventData.metadata?.multipleDuration,
+              searchParams?.get("duration"),
+              eventData.length
+            )}
+          />
+        </main>
+      </BookingPageErrorBoundary>
+    </div>
+  );
+}
+
+function Type(props: PageProps) {
+  return (
+    <ThemeProvider>
+      <TypeContent {...props} />
+    </ThemeProvider>
   );
 }
 

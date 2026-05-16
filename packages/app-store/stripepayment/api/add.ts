@@ -1,15 +1,27 @@
+import process from "node:process";
+import { WEBAPP_URL } from "@calcom/lib/constants";
+import logger from "@calcom/lib/logger";
+import prisma from "@calcom/prisma";
 import type { NextApiRequest, NextApiResponse } from "next";
 import stringify from "qs-stringify";
 import type Stripe from "stripe";
 import { z } from "zod";
-
-import { WEBAPP_URL } from "@calcom/lib/constants";
-import prisma from "@calcom/prisma";
-
 import { getStripeAppKeys } from "../lib/getStripeAppKeys";
 
+const log = logger.getSubLogger({ prefix: ["stripepayment:add"] });
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { client_id } = await getStripeAppKeys();
+  let client_id: string;
+  try {
+    const stripeKeys = await getStripeAppKeys();
+    client_id = stripeKeys.client_id;
+  } catch (error) {
+    log.error("Stripe Connect is not configured", error);
+    return res.status(400).json({
+      message:
+        "Stripe Connect is not configured. Add STRIPE_CLIENT_ID and STRIPE_PRIVATE_KEY in the GoBookMe environment or save them in the Stripe app keys, then restart the app.",
+    });
+  }
 
   if (req.method === "GET") {
     // Get user

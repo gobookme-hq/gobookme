@@ -82,7 +82,8 @@ const CalcomThemeProvider = (props: CalcomThemeProps) => {
   }, [isEmbedMode]);
 
   return (
-    <ThemeProvider key={key} {...themeProviderProps}>
+    // type="text/plain" suppresses the Next 16 "script in client component" warning; layout.tsx <head> handles FOUC instead.
+    <ThemeProvider key={key} {...themeProviderProps} scriptProps={{ type: "text/plain" }}>
       {props.children}
     </ThemeProvider>
   );

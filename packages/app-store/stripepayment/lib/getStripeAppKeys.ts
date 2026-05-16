@@ -1,4 +1,4 @@
-import getParsedAppKeysFromSlug from "../../_utils/getParsedAppKeysFromSlug";
-import { appKeysSchema } from "../zod";
+import getAppKeysFromSlug from "../../_utils/getAppKeysFromSlug";
+import { parseStripeConnectAppKeys } from "./appKeys";
 
-export const getStripeAppKeys = () => getParsedAppKeysFromSlug("stripe", appKeysSchema);
+export const getStripeAppKeys = async () => parseStripeConnectAppKeys(await getAppKeysFromSlug("stripe"));

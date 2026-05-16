@@ -1,9 +1,9 @@
 import { appKeysSchemas } from "@calcom/app-store/apps.keys-schemas.generated";
+import { isStripeConfiguredFromEnvironment } from "@calcom/app-store/stripepayment/lib/appKeys";
 import { getLocalAppMetadata } from "@calcom/app-store/utils";
 import type { PrismaClient } from "@calcom/prisma";
 import type { Prisma } from "@calcom/prisma/client";
 import { AppCategories } from "@calcom/prisma/enums";
-
 import type { TrpcSessionUser } from "../../../types";
 import type { TListLocalInputSchema } from "./listLocal.schema";
 
@@ -42,9 +42,10 @@ export const listLocalHandler = async ({ ctx, input }: ListLocalOptions) => {
 
     // Find app metadata
     const dbData = dbApps.find((dbApp) => dbApp.slug === app.slug);
+    const usesEnvironmentKeys = app.dirName === "stripepayment" && isStripeConfiguredFromEnvironment();
 
     // If the app already contains keys then return
-    if (dbData?.keys) {
+    if (dbData?.keys && !usesEnvironmentKeys) {
       return {
         name: app.name,
         slug: app.slug,
@@ -86,7 +87,7 @@ export const listLocalHandler = async ({ ctx, input }: ListLocalOptions) => {
       description: app.description,
       enabled: dbData?.enabled ?? false,
       dirName: app.dirName ?? app.slug,
-      keys: Object.keys(keys).length === 0 ? null : keys,
+      keys: Object.keys(keys).length === 0 || usesEnvironmentKeys ? null : keys,
     };
   });
 };

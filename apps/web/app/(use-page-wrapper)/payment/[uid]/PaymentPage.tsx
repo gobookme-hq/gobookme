@@ -2,27 +2,59 @@
 
 import { getPaymentAppData } from "@calcom/app-store/_utils/payments/getPaymentAppData";
 import { getSuccessPageLocationMessage } from "@calcom/app-store/locations";
+import getStripe from "@calcom/app-store/stripepayment/lib/client";
 import dayjs from "@calcom/dayjs";
 import { sdkActionManager, useIsEmbed } from "@calcom/embed-core/embed-iframe";
 import { PayIcon } from "@calcom/features/bookings/components/event-meta/PayIcon";
 import { Price } from "@calcom/features/bookings/components/event-meta/Price";
-import { APP_NAME, WEBSITE_URL } from "@calcom/lib/constants";
+import { APP_NAME, WEBAPP_URL, WEBSITE_URL } from "@calcom/lib/constants";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
 import useTheme from "@calcom/lib/hooks/useTheme";
 import { getIs24hClockFromLocalStorage, isBrowserLocale24h } from "@calcom/lib/timeFormat";
 import { CURRENT_TIMEZONE } from "@calcom/lib/timezoneConstants";
 import { localStorage } from "@calcom/lib/webstorage";
+import { Button } from "@calcom/ui/components/button";
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import classNames from "classnames";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import type { FC } from "react";
 import { useEffect, useState } from "react";
 
-
 type PaymentPageProps = {
-  payment: { id: number; success: boolean; refunded: boolean; amount: number; currency: string; paymentOption: string | null; data: Record<string, unknown>; appId?: string | null };
+  payment: {
+    id: number;
+    success: boolean;
+    refunded: boolean;
+    amount: number;
+    currency: string;
+    paymentOption: string | null;
+    data: Record<string, unknown>;
+    appId?: string | null;
+  };
   clientSecret?: string | null;
-  booking: { id: number; uid: string; title: string; startTime: string; endTime: string; status: string; paid: boolean; description?: string | null; location?: string | null };
-  eventType: { id: number; title: string; length: number; price: number; currency: string; metadata: Record<string, unknown> | null; successRedirectUrl?: string | null; forwardParamsSuccessRedirect?: boolean | null; recurringEvent?: unknown };
+  booking: {
+    id: number;
+    uid: string;
+    title: string;
+    startTime: string;
+    endTime: string;
+    status: string;
+    paid: boolean;
+    description?: string | null;
+    location?: string | null;
+  };
+  eventType: {
+    id: number;
+    title: string;
+    length: number;
+    price: number;
+    currency: string;
+    metadata: Record<string, unknown> | null;
+    successRedirectUrl?: string | null;
+    forwardParamsSuccessRedirect?: boolean | null;
+    recurringEvent?: unknown;
+  };
   profile: { theme?: string | null; hideBranding?: boolean };
   user?: { name?: string | null; username?: string | null } | null;
 };
@@ -59,6 +91,77 @@ const BtcpayPaymentComponent = dynamic(
     ssr: false,
   }
 );
+
+const StripeForm: FC<{ payment: PaymentPageProps["payment"]; booking: PaymentPageProps["booking"] }> = ({
+  payment,
+  booking,
+}) => {
+  const { t } = useLocale();
+  const stripe = useStripe();
+  const elements = useElements();
+  const router = useRouter();
+  const [processing, setProcessing] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setProcessing(true);
+    setErrorMsg(null);
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: "if_required",
+      confirmParams: { return_url: `${WEBAPP_URL}/booking/${booking.uid}` },
+    });
+    if (error) {
+      setErrorMsg(error.message ?? t("something_went_wrong"));
+      setProcessing(false);
+    } else if (paymentIntent) {
+      const qs = new URLSearchParams({
+        uid: booking.uid,
+        payment_intent: paymentIntent.id,
+        payment_intent_client_secret: paymentIntent.client_secret ?? "",
+        redirect_status: paymentIntent.status,
+      });
+      router.push(`/booking/${booking.uid}?${qs}`);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-4">
+      <PaymentElement />
+      {errorMsg && <p className="mt-2 text-sm text-red-500">{errorMsg}</p>}
+      <Button
+        type="submit"
+        color="primary"
+        className="mt-4 w-full justify-center"
+        disabled={!stripe || !elements || processing}
+        loading={processing}>
+        {payment.paymentOption === "HOLD" ? t("submit_payment_information") : t("pay_now")}
+      </Button>
+    </form>
+  );
+};
+
+const StripePaymentWrapper: FC<{
+  payment: PaymentPageProps["payment"];
+  clientSecret: string;
+  booking: PaymentPageProps["booking"];
+}> = ({ payment, clientSecret, booking }) => {
+  const paymentData = payment.data as { stripe_publishable_key?: string };
+  const stripePromise = getStripe(paymentData.stripe_publishable_key);
+  const [theme, setTheme] = useState<"stripe" | "night">("stripe");
+
+  useEffect(() => {
+    if (document.documentElement.classList.contains("dark")) setTheme("night");
+  }, []);
+
+  return (
+    <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme } }}>
+      <StripeForm payment={payment} booking={booking} />
+    </Elements>
+  );
+};
 
 const PaymentPage: FC<PaymentPageProps> = (props) => {
   const { t, i18n } = useLocale();
@@ -156,8 +259,12 @@ const PaymentPage: FC<PaymentPageProps> = (props) => {
                   {props.payment.success && !props.payment.refunded && (
                     <div className="mt-4 text-center text-default dark:text-gray-300">{t("paid")}</div>
                   )}
-                  {props.payment.appId === "stripe" && !props.payment.success && (
-                    <div>{/* StripePaymentComponent removed */}</div>
+                  {props.payment.appId === "stripe" && !props.payment.success && props.clientSecret && (
+                    <StripePaymentWrapper
+                      payment={props.payment}
+                      clientSecret={props.clientSecret}
+                      booking={props.booking}
+                    />
                   )}
                   {props.payment.appId === "paypal" && !props.payment.success && (
                     <PaypalPaymentComponent payment={props.payment} />

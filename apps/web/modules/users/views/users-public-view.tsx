@@ -19,12 +19,16 @@ import classNames from "classnames";
 import type { InferGetServerSidePropsType } from "next";
 import Link from "next/link";
 import { Toaster } from "sonner";
+import { GBM_DARK_TOKENS, GBM_LIGHT_TOKENS } from "~/theme/gbm-tokens";
+import { ThemeProvider, useGbmTheme } from "~/theme/ThemeProvider";
+import { ThemeToggle } from "~/theme/ThemeToggle";
 
 export type PageProps = InferGetServerSidePropsType<typeof getServerSideProps>;
-export function UserPage(props: PageProps) {
+
+function UserPageContent(props: PageProps) {
   const { users, profile, eventTypes, entity } = props;
 
-  const [user] = users; //To be used when we only have a single user, not dynamic group
+  const [user] = users;
   useTheme(profile.theme);
 
   const isBioEmpty = !user.bio || !user.bio.replace("<p><br></p>", "").length;
@@ -33,13 +37,8 @@ export function UserPage(props: PageProps) {
   const eventTypeListItemEmbedStyles = useEmbedStyles("eventTypeListItem");
   const shouldAlignCentrallyInEmbed = useEmbedNonStylesConfig("align") !== "left";
   const shouldAlignCentrally = !isEmbed || shouldAlignCentrallyInEmbed;
-  const {
-    // So it doesn't display in the Link (and make tests fail)
-    user: _user,
-    orgSlug: _orgSlug,
-    redirect: _redirect,
-    ...query
-  } = useRouterQuery();
+  const { user: _user, orgSlug: _orgSlug, redirect: _redirect, ...query } = useRouterQuery();
+  const { isDark } = useGbmTheme();
 
   if (entity.considerUnpublished) {
     return (
@@ -53,23 +52,28 @@ export function UserPage(props: PageProps) {
   const isOrg = !!user?.profile?.organization;
 
   return (
-    <>
+    <div
+      className="min-h-[calc(100dvh)] bg-zinc-50 dark:bg-[#09090b]"
+      style={isDark ? GBM_DARK_TOKENS : GBM_LIGHT_TOKENS}>
+      {/* Fixed bottom-right avoids the booker's fixed top-right layout toggle */}
+      {!isEmbed && <ThemeToggle className="fixed bottom-4 right-4 z-50" />}
       <div className={classNames(shouldAlignCentrally ? "mx-auto" : "", isEmbed ? "max-w-3xl" : "")}>
         <main
           className={classNames(
             shouldAlignCentrally ? "mx-auto" : "",
-            isEmbed ? "border-booker border-booker-width  bg-default rounded-md" : "",
-            "max-w-3xl px-4 py-12"
+            isEmbed ? "border-booker border-booker-width bg-default rounded-md" : "",
+            "max-w-2xl px-4 pb-16 pt-8"
           )}>
-          <div className="border-subtle bg-default text-default mb-8 overflow-hidden rounded-xl border">
+          {/* Profile card */}
+          <div className="mb-8 overflow-hidden rounded-2xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
             {isOrg && user.profile.organization?.bannerUrl && (
               <OrgBanner
                 alt={user.profile.organization.name ?? "Organization banner"}
                 imageSrc={user.profile.organization.bannerUrl}
-                className="p-1 border border-subtle rounded-xl w-full object-cover"
+                className="w-full border-b border-zinc-200 object-cover dark:border-zinc-800"
               />
             )}
-            <div className="p-4">
+            <div className="p-6">
               <UserAvatar
                 size="lg"
                 user={{
@@ -80,41 +84,39 @@ export function UserPage(props: PageProps) {
                 }}
                 className={isOrg && user.profile.organization?.bannerUrl ? "-mt-14" : ""}
               />
-              <h1
-                className={classNames(
-                  "font-cal text-emphasis mb-1 text-xl",
-                  isOrg && user.profile.organization?.bannerUrl ? "" : "mt-4"
-                )}
-                data-testid="name-title">
-                {profile.name}
-                {!isOrg && user.verified && (
-                  <Icon
-                    name="badge-check"
-                    className="mx-1 -mt-1 inline h-6 w-6 fill-blue-500 text-white dark:text-black"
-                  />
-                )}
-                {isOrg && (
-                  <Icon
-                    name="badge-check"
-                    className="mx-1 -mt-1 inline h-6 w-6 fill-yellow-500 text-white dark:text-black"
-                  />
-                )}
-              </h1>
-              {!isBioEmpty && (
-                <>
-                  {/* biome-ignore lint/security/noDangerouslySetInnerHtml: Content is sanitized via safeBio */}
+              <div className="mt-4 space-y-1">
+                <h1
+                  className="font-cal text-xl font-semibold text-zinc-900 dark:text-zinc-50"
+                  data-testid="name-title">
+                  {profile.name}
+                  {!isOrg && user.verified && (
+                    <Icon name="badge-check" className="mx-1 -mt-1 inline h-5 w-5 fill-blue-500 text-white" />
+                  )}
+                  {isOrg && (
+                    <Icon
+                      name="badge-check"
+                      className="mx-1 -mt-1 inline h-5 w-5 fill-yellow-500 text-white"
+                    />
+                  )}
+                </h1>
+                {!isBioEmpty && (
                   <div
-                    className="text-default wrap-break-word text-sm [&_a]:text-blue-500 [&_a]:underline [&_a]:hover:text-blue-600"
+                    className="text-sm text-zinc-600 dark:text-zinc-400 [&_a]:text-orange-500 [&_a]:underline [&_a]:hover:text-orange-400 dark:[&_a]:text-orange-400 dark:[&_a]:hover:text-orange-300"
+                    /* biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized via safeBio */
                     dangerouslySetInnerHTML={{ __html: props.safeBio }}
                   />
-                </>
-              )}
+                )}
+              </div>
             </div>
           </div>
 
-          <div
-            className={classNames("rounded-md ", !isEventListEmpty && "border-subtle border")}
-            data-testid="event-types">
+          {/* Event type list */}
+          <div className="space-y-2" data-testid="event-types">
+            {!isEventListEmpty && (
+              <p className="mb-3 font-mono text-xs text-zinc-500 dark:text-zinc-600">
+                {eventTypes.length} service{eventTypes.length !== 1 ? "s" : ""} available
+              </p>
+            )}
             {eventTypes.map((type) => (
               <Link
                 key={type.id}
@@ -126,23 +128,20 @@ export function UserPage(props: PageProps) {
                 }}
                 passHref
                 onClick={async () => {
-                  sdkActionManager?.fire("eventTypeSelected", {
-                    eventType: type,
-                  });
+                  sdkActionManager?.fire("eventTypeSelected", { eventType: type });
                 }}
-                className="bg-default border-subtle dark:bg-cal-muted dark:hover:bg-subtle hover:bg-cal-muted group relative border-b transition first:rounded-t-md last:rounded-b-md last:border-b-0"
+                className="group flex w-full items-center justify-between rounded-xl border border-zinc-200 bg-white p-5 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700 dark:hover:bg-zinc-800/50"
                 data-testid="event-type-link">
-                <Icon
-                  name="arrow-right"
-                  className="text-emphasis absolute right-4 top-4 h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100"
-                />
-                {/* Don't prefetch till the time we drop the amount of javascript in [user][type] page which is impacting score for [user] page */}
-                <div className="block w-full p-5">
-                  <div className="flex flex-wrap items-center">
-                    <h2 className="text-default pr-2 text-sm font-semibold">{type.title}</h2>
-                  </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-sm font-semibold text-zinc-800 group-hover:text-zinc-900 dark:text-zinc-100 dark:group-hover:text-white">
+                    {type.title}
+                  </h2>
                   <EventTypeDescription eventType={type} isPublic={true} shortenDescription />
                 </div>
+                <Icon
+                  name="arrow-right"
+                  className="ml-4 h-4 w-4 shrink-0 text-zinc-400 transition-colors group-hover:text-orange-500 dark:text-zinc-600 dark:group-hover:text-orange-400"
+                />
               </Link>
             ))}
           </div>
@@ -151,7 +150,15 @@ export function UserPage(props: PageProps) {
         </main>
         <Toaster position="bottom-right" />
       </div>
-    </>
+    </div>
+  );
+}
+
+export function UserPage(props: PageProps) {
+  return (
+    <ThemeProvider>
+      <UserPageContent {...props} />
+    </ThemeProvider>
   );
 }
 
