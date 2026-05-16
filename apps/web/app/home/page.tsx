@@ -6,7 +6,6 @@ import { createRouterCaller, getTRPCContext } from "app/_trpc/context";
 import { _generateMetadata } from "app/_utils";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-
 import HomeView from "~/home/views/home-view";
 
 const Page = async () => {
@@ -43,6 +42,9 @@ const Page = async () => {
       sumOfBookings={stats.sumOfBookings ?? 0}
       sumOfEventTypes={stats.sumOfEventTypes ?? 0}
       sumOfTeamEventTypes={stats.sumOfTeamEventTypes ?? 0}
+      hasCalendar={stats.hasCalendar ?? false}
+      hasPayment={stats.hasPayment ?? false}
+      hasAvailability={stats.hasAvailability ?? false}
     />
   );
 };

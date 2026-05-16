@@ -1,13 +1,13 @@
 "use client";
 
-import { BookingStatus } from "@calcom/prisma/enums";
 import { WEBAPP_URL } from "@calcom/lib/constants";
 import { useLocale } from "@calcom/lib/hooks/useLocale";
+import { BookingStatus } from "@calcom/prisma/enums";
 import type { RouterOutputs } from "@calcom/trpc/react";
 import { trpc } from "@calcom/trpc/react";
 import { Icon } from "@calcom/ui/components/icon";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type HomeViewProps = {
   userName: string;
@@ -15,6 +15,9 @@ type HomeViewProps = {
   sumOfBookings: number;
   sumOfEventTypes: number;
   sumOfTeamEventTypes: number;
+  hasCalendar: boolean;
+  hasPayment: boolean;
+  hasAvailability: boolean;
 };
 
 function getGreeting(name: string): string {
@@ -32,7 +35,13 @@ type StatCardProps = {
   accent?: string;
 };
 
-function StatCard({ label, value, icon, href, accent = "bg-indigo-50 dark:bg-indigo-950/30" }: StatCardProps) {
+function StatCard({
+  label,
+  value,
+  icon,
+  href,
+  accent = "bg-indigo-50 dark:bg-indigo-950/30",
+}: StatCardProps) {
   const inner = (
     <div className="group flex flex-col gap-3 rounded-2xl border border-subtle bg-default p-5 shadow-sm transition-shadow hover:shadow-md">
       <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${accent}`}>{icon}</div>
@@ -57,9 +66,7 @@ function AppointmentRow({ title, time, attendee, status }: AppointmentRowProps) 
   return (
     <div className="flex items-center justify-between rounded-xl border border-subtle bg-default px-4 py-3 shadow-sm">
       <div className="flex items-center gap-3">
-        <div
-          className={`h-2 w-2 rounded-full ${status === "confirmed" ? "bg-green-500" : "bg-amber-400"}`}
-        />
+        <div className={`h-2 w-2 rounded-full ${status === "confirmed" ? "bg-green-500" : "bg-amber-400"}`} />
         <div>
           <p className="text-sm font-medium text-emphasis">{title}</p>
           <p className="text-xs text-subtle">{attendee}</p>
@@ -80,6 +87,8 @@ function SetupChecklist({ items }: { items: SetupItem[] }) {
   const done = items.filter((i) => i.done).length;
   const total = items.length;
   const pct = Math.round((done / total) * 100);
+
+  if (done === total) return null;
 
   return (
     <div className="rounded-2xl border border-subtle bg-default p-5 shadow-sm">
@@ -103,9 +112,7 @@ function SetupChecklist({ items }: { items: SetupItem[] }) {
               className="flex items-center gap-2.5 rounded-lg px-1 py-1 text-sm transition-colors hover:bg-subtle">
               <div
                 className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border ${
-                  item.done
-                    ? "border-indigo-600 bg-indigo-600"
-                    : "border-subtle bg-default"
+                  item.done ? "border-indigo-600 bg-indigo-600" : "border-subtle bg-default"
                 }`}>
                 {item.done && <Icon name="check" className="h-3 w-3 text-white" />}
               </div>
@@ -152,24 +159,33 @@ export default function HomeView({
   sumOfBookings,
   sumOfEventTypes,
   sumOfTeamEventTypes,
+  hasCalendar,
+  hasPayment,
+  hasAvailability,
 }: HomeViewProps) {
   const { t } = useLocale();
   const [greeting, setGreeting] = useState("");
 
-  // Derive greeting on client to avoid SSR mismatch
   useEffect(() => {
     setGreeting(getGreeting(userName));
   }, [userName]);
 
   const { data: unconfirmedCount = 0 } = trpc.viewer.me.bookingUnconfirmedCount.useQuery();
 
+  // Upcoming = ACCEPTED future bookings (totalCount from the upcoming filter)
+  const { data: upcomingData } = trpc.viewer.bookings.get.useQuery(
+    { filters: { status: "upcoming" }, limit: 1, offset: 0 },
+    { staleTime: 30_000 }
+  );
+  const upcomingCount = upcomingData?.totalCount ?? 0;
+
   const totalEventTypes = sumOfEventTypes + (sumOfTeamEventTypes ?? 0);
 
   const setupItems: SetupItem[] = [
     { label: "Create your first booking page", href: "/event-types/new", done: totalEventTypes > 0 },
-    { label: "Connect your calendar", href: "/apps/installed/calendar", done: false },
-    { label: "Set your availability", href: "/availability", done: false },
-    { label: "Add payment method", href: "/apps/categories/payment", done: false },
+    { label: "Connect your calendar", href: "/apps/installed/calendar", done: hasCalendar },
+    { label: "Set your availability", href: "/availability", done: hasAvailability },
+    { label: "Add payment method", href: "/settings/my-account/payments", done: hasPayment },
     { label: "Share your booking link", href: `/${bookingPageSlug}`, done: sumOfBookings > 0 },
   ];
 
@@ -180,14 +196,16 @@ export default function HomeView({
         <h1 className="text-2xl font-bold tracking-tight text-emphasis sm:text-3xl">
           {greeting || `Welcome back, ${userName} 👋`}
         </h1>
-        <p className="mt-1 text-sm text-subtle">Here&apos;s what&apos;s happening with your bookings today.</p>
+        <p className="mt-1 text-sm text-subtle">
+          Here&apos;s what&apos;s happening with your bookings today.
+        </p>
       </div>
 
       {/* Stats grid */}
       <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard
           label="Upcoming"
-          value={unconfirmedCount}
+          value={upcomingCount}
           href="/bookings/upcoming"
           accent="bg-blue-50 dark:bg-blue-950/30"
           icon={<Icon name="calendar" className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
@@ -252,20 +270,38 @@ export default function HomeView({
 type BookingItem = RouterOutputs["viewer"]["bookings"]["get"]["bookings"][number];
 
 function TodayAppointments() {
+  // Compute today's window in local time
+  const { todayStartISO, todayEndISO } = useMemo(() => {
+    const s = new Date();
+    s.setHours(0, 0, 0, 0);
+    const e = new Date();
+    e.setHours(23, 59, 59, 999);
+    return { todayStartISO: s.toISOString(), todayEndISO: e.toISOString() };
+  }, []);
+
+  // Fetch upcoming + unconfirmed bookings from today onwards with generous limit
   const { data, isLoading } = trpc.viewer.bookings.get.useQuery(
-    { filters: { status: "upcoming" }, limit: 5, offset: 0 },
-    { staleTime: 60_000 }
+    {
+      filters: {
+        statuses: ["upcoming", "unconfirmed"],
+        afterStartDate: todayStartISO,
+      },
+      limit: 50,
+      offset: 0,
+    },
+    { staleTime: 30_000 }
   );
 
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayEnd = new Date();
-  todayEnd.setHours(23, 59, 59, 999);
+  const todayEnd = useMemo(() => new Date(todayEndISO), [todayEndISO]);
 
-  const todayBookings = ((data?.bookings ?? []) as BookingItem[]).filter((b: BookingItem) => {
-    const start = new Date(b.startTime);
-    return start >= todayStart && start <= todayEnd;
-  });
+  const todayBookings = useMemo(
+    () =>
+      ((data?.bookings ?? []) as BookingItem[]).filter((b) => {
+        const start = new Date(b.startTime);
+        return start <= todayEnd;
+      }),
+    [data?.bookings, todayEnd]
+  );
 
   if (isLoading) {
     return (
@@ -302,23 +338,39 @@ function TodayAppointments() {
 }
 
 function ThisWeekSection() {
+  const { weekStartISO, weekEndISO } = useMemo(() => {
+    const now = new Date();
+    const s = new Date(now);
+    s.setDate(now.getDate() - now.getDay()); // Sunday
+    s.setHours(0, 0, 0, 0);
+    const e = new Date(s);
+    e.setDate(s.getDate() + 6); // Saturday
+    e.setHours(23, 59, 59, 999);
+    return { weekStartISO: s.toISOString(), weekEndISO: e.toISOString() };
+  }, []);
+
   const { data, isLoading } = trpc.viewer.bookings.get.useQuery(
-    { filters: { status: "upcoming" }, limit: 10, offset: 0 },
-    { staleTime: 60_000 }
+    {
+      filters: {
+        statuses: ["upcoming", "unconfirmed"],
+        afterStartDate: weekStartISO,
+      },
+      limit: 50,
+      offset: 0,
+    },
+    { staleTime: 30_000 }
   );
 
-  const now = new Date();
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - now.getDay());
-  weekStart.setHours(0, 0, 0, 0);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 6);
-  weekEnd.setHours(23, 59, 59, 999);
+  const weekEnd = useMemo(() => new Date(weekEndISO), [weekEndISO]);
 
-  const weekBookings = ((data?.bookings ?? []) as BookingItem[]).filter((b: BookingItem) => {
-    const start = new Date(b.startTime);
-    return start >= weekStart && start <= weekEnd;
-  });
+  const weekBookings = useMemo(
+    () =>
+      ((data?.bookings ?? []) as BookingItem[]).filter((b) => {
+        const start = new Date(b.startTime);
+        return start <= weekEnd;
+      }),
+    [data?.bookings, weekEnd]
+  );
 
   if (isLoading) {
     return <div className="h-12 animate-pulse rounded-xl bg-subtle" />;
@@ -335,7 +387,7 @@ function ThisWeekSection() {
 
   return (
     <div className="space-y-2">
-      {weekBookings.slice(0, 4).map((b) => {
+      {weekBookings.slice(0, 7).map((b) => {
         const start = new Date(b.startTime);
         return (
           <AppointmentRow
