@@ -123,11 +123,13 @@ env:
   - variable: CALENDSO_ENCRYPTION_KEY
     secret: CALENDSO_ENCRYPTION_KEY
     availability:
+      - BUILD
       - RUNTIME
 
   - variable: GOOGLE_API_CREDENTIALS
     secret: GOOGLE_API_CREDENTIALS
     availability:
+      - BUILD
       - RUNTIME
 
   # Cron auth — routes accept either CRON_API_KEY (plain) or Bearer CRON_SECRET
