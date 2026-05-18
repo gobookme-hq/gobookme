@@ -24,11 +24,6 @@ env:
     availability:
       - BUILD
 
-  - variable: SENTRY_AUTH_TOKEN
-    value: ""
-    availability:
-      - BUILD
-
   # ── Public / non-sensitive runtime + build ──────────────────────────────────
   - variable: NEXT_PUBLIC_APP_NAME
     value: gobookme
@@ -48,11 +43,6 @@ env:
       - BUILD
       - RUNTIME
 
-  - variable: NEXT_PUBLIC_DISABLE_SIGNUP
-    value: ""
-    availability:
-      - BUILD
-      - RUNTIME
 
   - variable: CALCOM_TELEMETRY_DISABLED
     value: "1"
