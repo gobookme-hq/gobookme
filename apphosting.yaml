@@ -117,6 +117,7 @@ env:
   - variable: NEXTAUTH_SECRET
     secret: NEXTAUTH_SECRET
     availability:
+      - BUILD
       - RUNTIME
 
   - variable: CALENDSO_ENCRYPTION_KEY
