@@ -1,11 +1,9 @@
-import { OAuth2Client } from "googleapis-common";
-import type { NextApiRequest, NextApiResponse } from "next";
-
 import { GOOGLE_CALENDAR_SCOPES, SCOPE_USERINFO_PROFILE, WEBAPP_URL_FOR_OAUTH } from "@calcom/lib/constants";
 import { HttpError } from "@calcom/lib/http-error";
 import { defaultHandler } from "@calcom/lib/server/defaultHandler";
 import { defaultResponder } from "@calcom/lib/server/defaultResponder";
-
+import { OAuth2Client } from "googleapis-common";
+import type { NextApiRequest, NextApiResponse } from "next";
 import { encodeOAuthState } from "../../_utils/oauth/encodeOAuthState";
 import { getGoogleAppKeys } from "../lib/getGoogleAppKeys";
 
@@ -22,7 +20,18 @@ async function getHandler(req: NextApiRequest, res: NextApiResponse) {
     throw new HttpError({ statusCode: 400, message: "Session user must have an email" });
   }
 
-  const { client_id, client_secret } = await getGoogleAppKeys();
+  let googleAppKeys: Awaited<ReturnType<typeof getGoogleAppKeys>>;
+  try {
+    googleAppKeys = await getGoogleAppKeys();
+  } catch {
+    throw new HttpError({
+      statusCode: 400,
+      message:
+        "Google Calendar is not configured. Add GOOGLE_API_CREDENTIALS in the GoBookMe environment or save valid Google Calendar app keys, then restart the app.",
+    });
+  }
+
+  const { client_id, client_secret } = googleAppKeys;
   const redirect_uri = `${WEBAPP_URL_FOR_OAUTH}/api/integrations/googlecalendar/callback`;
   const oAuth2Client = new OAuth2Client(client_id, client_secret, redirect_uri);
 

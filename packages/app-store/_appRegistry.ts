@@ -5,6 +5,7 @@ import { getAppFromSlug } from "@calcom/app-store/utils";
 import type { UserAdminTeams } from "@calcom/features/users/repositories/UserRepository";
 import getInstallCountPerApp from "@calcom/lib/apps/getInstallCountPerApp";
 import prisma, { safeAppSelect, safeCredentialSelect } from "@calcom/prisma";
+import { AppCategories } from "@calcom/prisma/enums";
 import { userMetadata } from "@calcom/prisma/zod-utils";
 import type { AppFrontendPayload as App } from "@calcom/types/App";
 import type { CredentialFrontendPayload as Credential } from "@calcom/types/Credential";
@@ -37,6 +38,54 @@ export async function getAppWithMetadata(app: { dirName: string } | { slug: stri
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { key, ...metadata } = appMetadata;
   return metadata;
+}
+
+function getAppCategories(app: App) {
+  const categories = app.categories ?? [app.category ?? "other"];
+  return categories.filter((category): category is (typeof AppCategories)[keyof typeof AppCategories] => {
+    return Object.values(AppCategories).includes(
+      category as (typeof AppCategories)[keyof typeof AppCategories]
+    );
+  });
+}
+
+export async function ensureAllowedAppRecord(slug: string) {
+  const app = await getAppWithMetadata({ slug });
+  if (!app || !GOBOOKME_ALLOWED_APP_SLUGS.has(app.slug)) return null;
+
+  await prisma.app.createMany({
+    data: [
+      {
+        slug: app.slug,
+        dirName: app.dirName ?? app.slug,
+        categories: getAppCategories(app),
+        enabled: true,
+      },
+    ],
+    skipDuplicates: true,
+  });
+
+  return app;
+}
+
+async function ensureAllowedAppRecords() {
+  const apps = [] as App[];
+
+  for await (const [dirName] of Object.entries(appStoreMetadata)) {
+    const app = await getAppWithMetadata({ dirName });
+    if (!app || !GOBOOKME_ALLOWED_APP_SLUGS.has(app.slug)) continue;
+    apps.push(app);
+  }
+
+  await prisma.app.createMany({
+    data: apps.map((app) => ({
+      slug: app.slug,
+      dirName: app.dirName ?? app.slug,
+      categories: getAppCategories(app),
+      enabled: true,
+    })),
+    skipDuplicates: true,
+  });
 }
 
 async function getAllowedStaticApps(installCountPerApp: Record<string, number>) {
@@ -92,6 +141,8 @@ function getSafeDelegationCredentialsForApp(
 
 /** Mainly to use in listings for the frontend, use in getStaticProps or getServerSideProps */
 export async function getAppRegistry() {
+  await ensureAllowedAppRecords();
+
   const dbApps = await prisma.app.findMany({
     where: { enabled: true, slug: { in: allowedAppSlugs } },
     select: { dirName: true, slug: true, categories: true, enabled: true, createdAt: true },
@@ -121,6 +172,8 @@ export async function getAppRegistry() {
 }
 
 export async function getAppRegistryWithCredentials(userId: number, userAdminTeams: UserAdminTeams = []) {
+  await ensureAllowedAppRecords();
+
   const dbApps = await prisma.app.findMany({
     where: { enabled: true, slug: { in: allowedAppSlugs } },
     select: {

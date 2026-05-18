@@ -1,15 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
-
-import yaml from "js-yaml";
-import { z } from "zod";
-
-import { getAppWithMetadata } from "@calcom/app-store/_appRegistry";
+import process from "node:process";
+import { ensureAllowedAppRecord, getAppWithMetadata } from "@calcom/app-store/_appRegistry";
 import { getAppAssetFullPath } from "@calcom/app-store/getAppAssetFullPath";
 import { GOBOOKME_ALLOWED_APP_SLUGS } from "@calcom/app-store/gobookme-allowed-apps";
 import { IS_PRODUCTION } from "@calcom/lib/constants";
-import { prisma } from "@calcom/prisma";
 import logger from "@calcom/lib/logger";
+import { prisma } from "@calcom/prisma";
+import yaml from "js-yaml";
+import { z } from "zod";
 
 const log = logger.getSubLogger({ prefix: ["lib", "parseFrontmatter"] });
 
@@ -74,12 +73,18 @@ export const getStaticProps = async (slug: string) => {
     slug,
   });
 
+  await ensureAllowedAppRecord(slug.toLowerCase());
+
   const appFromDb = await prisma.app.findUnique({
     where: { slug: slug.toLowerCase() },
+    select: {
+      dirName: true,
+      enabled: true,
+    },
   });
 
   const isAppAvailableInFileSystem = appMeta;
-  const isAppDisabled = isAppAvailableInFileSystem && (!appFromDb || !appFromDb.enabled);
+  const isAppDisabled = isAppAvailableInFileSystem && appFromDb && !appFromDb.enabled;
 
   if (!IS_PRODUCTION && isAppDisabled) {
     return {
@@ -90,10 +95,10 @@ export const getStaticProps = async (slug: string) => {
     };
   }
 
-  if (!appFromDb || !appMeta || isAppDisabled) return null;
+  if (!appMeta || isAppDisabled) return null;
 
   const isTemplate = appMeta.isTemplate;
-  const appDirname = path.join(isTemplate ? "templates" : "", appFromDb.dirName);
+  const appDirname = path.join(isTemplate ? "templates" : "", appFromDb?.dirName ?? appMeta.dirName ?? slug);
   const README_PATH = path.join(process.cwd(), "..", "..", `packages/app-store/${appDirname}/DESCRIPTION.md`);
   const postFilePath = path.join(README_PATH);
   let source = "";
