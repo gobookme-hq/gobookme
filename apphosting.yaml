@@ -19,6 +19,11 @@ env:
     availability:
       - BUILD
 
+  - variable: HUSKY
+    value: "0"
+    availability:
+      - BUILD
+
   - variable: NODE_OPTIONS
     value: "--max-old-space-size=4096"
     availability:
