@@ -129,11 +129,6 @@ env:
     availability:
       - RUNTIME
 
-  - variable: GOOGLE_CALENDAR_API_KEY
-    secret: GOOGLE_CALENDAR_API_KEY
-    availability:
-      - RUNTIME
-
   # Cron auth — routes accept either CRON_API_KEY (plain) or Bearer CRON_SECRET
   - variable: CRON_API_KEY
     secret: CRON_API_KEY
@@ -146,16 +141,6 @@ env:
       - RUNTIME
 
   # Email (Sendgrid)
-  - variable: SENDGRID_API_KEY
-    secret: SENDGRID_API_KEY
-    availability:
-      - RUNTIME
-
-  - variable: SENDGRID_EMAIL
-    secret: SENDGRID_EMAIL
-    availability:
-      - RUNTIME
-
   - variable: NEXT_PUBLIC_SENDGRID_SENDER_NAME
     secret: NEXT_PUBLIC_SENDGRID_SENDER_NAME
     availability:
@@ -253,12 +238,3 @@ env:
     availability:
       - RUNTIME
 
-  - variable: EMAIL_SERVER_USER
-    secret: EMAIL_SERVER_USER
-    availability:
-      - RUNTIME
-
-  - variable: EMAIL_SERVER_PASSWORD
-    secret: EMAIL_SERVER_PASSWORD
-    availability:
-      - RUNTIME
