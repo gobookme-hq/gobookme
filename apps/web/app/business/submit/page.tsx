@@ -22,7 +22,7 @@ export default async function BusinessSubmitPage() {
   const [listings, categories, eventTypes] = await Promise.all([
     service.listOwnerListings(session.user.id),
     service.listCategories(),
-    getOwnerEventTypeOptions(session.user.id),
+    getOwnerEventTypeOptions({ ownerUserId: session.user.id, userId: session.user.id }),
   ]);
 
   // Owner already has a listing — send them to manage instead
@@ -37,8 +37,8 @@ export default async function BusinessSubmitPage() {
           </Link>
           <h1 className="text-3xl font-semibold text-emphasis">List your business</h1>
           <p className="text-sm text-subtle">
-            Fill in your details and submit for review. Once approved by our team your business will appear
-            in the public directory and customers can start booking.
+            Fill in your details and submit for review. Once approved by our team your business will appear in
+            the public directory and customers can start booking.
           </p>
         </header>
 

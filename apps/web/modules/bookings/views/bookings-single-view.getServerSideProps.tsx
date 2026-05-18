@@ -1,4 +1,5 @@
 import { eventTypeMetaDataSchemaWithTypedApps } from "@calcom/app-store/zod-utils";
+import { syncStripePaymentSuccess } from "@calcom/app-store/stripepayment/lib/syncPaymentSuccess";
 import { getServerSession } from "@calcom/features/auth/lib/getServerSession";
 import getBookingInfo from "@calcom/features/bookings/lib/getBookingInfo";
 import { BookingRepository } from "@calcom/features/bookings/repositories/BookingRepository";
@@ -6,6 +7,7 @@ import { getDefaultEvent } from "@calcom/features/eventtypes/lib/defaultEvents";
 import { getBrandingForEventType } from "@calcom/features/profile/lib/getBranding";
 import { shouldHideBrandingForEvent } from "@calcom/features/profile/lib/hideBranding";
 import { parseRecurringEvent } from "@calcom/lib/isRecurringEvent";
+import logger from "@calcom/lib/logger";
 import { markdownToSafeHTML } from "@calcom/lib/markdownToSafeHTML";
 import { maybeGetBookingUidFromSeat } from "@calcom/lib/server/maybeGetBookingUidFromSeat";
 import prisma from "@calcom/prisma";
@@ -31,8 +33,12 @@ const querySchema = z.object({
   reschedule: stringToBoolean,
   isSuccessBookingPage: stringToBoolean,
   formerTime: z.string().optional(),
+  payment_intent: z.string().optional(),
+  redirect_status: z.string().optional(),
   seatReferenceUid: z.string().optional(),
 });
+
+const log = logger.getSubLogger({ prefix: ["booking-success-page"] });
 
 export type PageProps = inferSSRProps<typeof getServerSideProps>;
 
@@ -59,12 +65,23 @@ export async function getServerSideProps(context: GetServerSidePropsContext) {
   const parsedQuery = querySchema.safeParse(context.query);
 
   if (!parsedQuery.success) return { notFound: true } as const;
-  const { eventTypeSlug } = parsedQuery.data;
+  const { eventTypeSlug, payment_intent, redirect_status } = parsedQuery.data;
   let { uid, seatReferenceUid } = parsedQuery.data;
 
   const maybeBookingUidFromSeat = await maybeGetBookingUidFromSeat(prisma, uid);
   if (maybeBookingUidFromSeat.uid) uid = maybeBookingUidFromSeat.uid;
   if (maybeBookingUidFromSeat.seatReferenceUid) seatReferenceUid = maybeBookingUidFromSeat.seatReferenceUid;
+
+  if (payment_intent && redirect_status === "succeeded") {
+    try {
+      await syncStripePaymentSuccess({
+        paymentIntentId: payment_intent,
+        bookingUid: uid,
+      });
+    } catch (error) {
+      log.warn({ uid, error }, "Unable to sync Stripe payment success from booking success page");
+    }
+  }
 
   const { bookingInfoRaw, bookingInfo } = await getBookingInfo(uid);
 

@@ -117,6 +117,27 @@ const StripeForm: FC<{ payment: PaymentPageProps["payment"]; booking: PaymentPag
       setErrorMsg(error.message ?? t("something_went_wrong"));
       setProcessing(false);
     } else if (paymentIntent) {
+      if (paymentIntent.status === "succeeded") {
+        const response = await fetch("/api/integrations/stripepayment/syncPayment", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            bookingUid: booking.uid,
+            paymentId: payment.id,
+            paymentIntentId: paymentIntent.id,
+          }),
+        });
+
+        if (!response.ok) {
+          const result = (await response.json().catch(() => null)) as { message?: string } | null;
+          setErrorMsg(result?.message ?? t("something_went_wrong"));
+          setProcessing(false);
+          return;
+        }
+      }
+
       const qs = new URLSearchParams({
         uid: booking.uid,
         payment_intent: paymentIntent.id,

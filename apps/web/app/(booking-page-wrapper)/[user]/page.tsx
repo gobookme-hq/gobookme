@@ -6,7 +6,8 @@ import { generateMeetingMetadata } from "app/_utils";
 import { withAppDirSsr } from "app/WithAppDirSsr";
 import type { Metadata } from "next";
 import { cookies, headers } from "next/headers";
-import type React from "react";
+import { CityDirectoryPageView } from "~/business/components/GoBookMeMarketplace";
+import { getRootCityDirectoryData } from "~/business/lib/city-directory";
 import type { PageProps as LegacyPageProps } from "~/users/views/users-public-view";
 import LegacyPage from "~/users/views/users-public-view";
 
@@ -14,16 +15,43 @@ const getData: (ctx: ReturnType<typeof buildLegacyCtx>) => Promise<LegacyPagePro
   withAppDirSsr<LegacyPageProps>(getServerSideProps);
 
 const ServerPage = async ({ params, searchParams }: PageProps): Promise<JSX.Element> => {
+  const resolvedParams = await params;
+  const resolvedSearchParams = await searchParams;
+  const decodedParams = decodeParams(resolvedParams);
+  const cityDirectory = await getRootCityDirectoryData(decodedParams.user);
+
+  if (cityDirectory) {
+    return (
+      <CityDirectoryPageView
+        cityName={cityDirectory.cityName}
+        citySlug={cityDirectory.citySlug}
+        listings={cityDirectory.listings}
+      />
+    );
+  }
+
   const props = await getData(
-    buildLegacyCtx(await headers(), await cookies(), await params, await searchParams)
+    buildLegacyCtx(await headers(), await cookies(), resolvedParams, resolvedSearchParams)
   );
 
   return <LegacyPage {...props} />;
 };
 
 export const generateMetadata = async ({ params, searchParams }: PageProps): Promise<Metadata> => {
+  const resolvedParams = await params;
+  const resolvedSearchParams = await searchParams;
+  const decodedParams = decodeParams(resolvedParams);
+  const cityDirectory = await getRootCityDirectoryData(decodedParams.user);
+
+  if (cityDirectory) {
+    return {
+      title: `Book local services in ${cityDirectory.cityName} | GoBookME`,
+      description: `Browse ${cityDirectory.cityName} service businesses and book online.`,
+    };
+  }
+
   const props = await getData(
-    buildLegacyCtx(await headers(), await cookies(), await params, await searchParams)
+    buildLegacyCtx(await headers(), await cookies(), resolvedParams, resolvedSearchParams)
   );
 
   const { profile, markdownStrippedBio, isOrgSEOIndexable } = props;
@@ -42,7 +70,7 @@ export const generateMetadata = async ({ params, searchParams }: PageProps): Pro
     () => markdownStrippedBio,
     false,
     WEBAPP_URL,
-    `/${decodeParams(await params).user}`
+    `/${decodedParams.user}`
   );
 
   return {

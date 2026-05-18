@@ -13,24 +13,65 @@ import type {
   BusinessCategoryUpsertInput,
   BusinessClaimRequestInput,
   BusinessClaimReviewInput,
+  BusinessListingAdminActionInput,
   BusinessListingAnalyticsInput,
   BusinessListingUpsertInput,
   BusinessOwnerListingUpdateInput,
 } from "../lib/schemas";
+import { calculateBusinessListingCompleteness } from "../lib/status";
 
 const serviceEventTypeSelect = {
   id: true,
   title: true,
   slug: true,
+  description: true,
   length: true,
   price: true,
   currency: true,
   hidden: true,
   metadata: true,
+  availability: {
+    select: {
+      days: true,
+      startTime: true,
+      endTime: true,
+      date: true,
+    },
+  },
+  schedule: {
+    select: {
+      id: true,
+      timeZone: true,
+      availability: {
+        select: {
+          days: true,
+          startTime: true,
+          endTime: true,
+          date: true,
+        },
+      },
+    },
+  },
   owner: {
     select: {
       username: true,
       name: true,
+      timeZone: true,
+      defaultScheduleId: true,
+      schedules: {
+        select: {
+          id: true,
+          timeZone: true,
+          availability: {
+            select: {
+              days: true,
+              startTime: true,
+              endTime: true,
+              date: true,
+            },
+          },
+        },
+      },
     },
   },
   profile: {
@@ -69,6 +110,11 @@ export const businessListingSelect = {
   foundingCustomer: true,
   setupPackageStatus: true,
   paymentWillingness: true,
+  submittedAt: true,
+  reviewedAt: true,
+  reviewedById: true,
+  reviewNote: true,
+  lastPublishedAt: true,
   ownerUserId: true,
   ownerTeamId: true,
   createdAt: true,
@@ -114,9 +160,13 @@ export const businessListingSelect = {
   },
 } satisfies Prisma.BusinessListingSelect;
 
-export type BusinessListingDTO = Prisma.BusinessListingGetPayload<{
+type BusinessListingRecord = Prisma.BusinessListingGetPayload<{
   select: typeof businessListingSelect;
 }>;
+
+export type BusinessListingDTO = BusinessListingRecord & {
+  profileCompleteness: number;
+};
 
 export class BusinessListingRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -174,7 +224,7 @@ export class BusinessListingRepository {
   }
 
   async listApproved({ city, categorySlug }: { city?: string; categorySlug?: string } = {}) {
-    return await this.prisma.businessListing.findMany({
+    const listings = await this.prisma.businessListing.findMany({
       where: {
         approvalStatus: BusinessListingApprovalStatus.APPROVED,
         visibility: BusinessListingVisibility.PUBLIC,
@@ -194,10 +244,11 @@ export class BusinessListingRepository {
       orderBy: [{ featured: "desc" }, { displayName: "asc" }],
       select: businessListingSelect,
     });
+    return listings.map(withComputedListingFields);
   }
 
   async findApprovedBySlug(slug: string) {
-    return await this.prisma.businessListing.findFirst({
+    const listing = await this.prisma.businessListing.findFirst({
       where: {
         slug,
         approvalStatus: BusinessListingApprovalStatus.APPROVED,
@@ -205,13 +256,23 @@ export class BusinessListingRepository {
       },
       select: businessListingSelect,
     });
+    return withNullableComputedListingFields(listing);
+  }
+
+  async findPreviewableBySlug(slug: string) {
+    const listing = await this.prisma.businessListing.findUnique({
+      where: { slug },
+      select: businessListingSelect,
+    });
+    return withNullableComputedListingFields(listing);
   }
 
   async findEditableById(id: string) {
-    return await this.prisma.businessListing.findUnique({
+    const listing = await this.prisma.businessListing.findUnique({
       where: { id },
       select: businessListingSelect,
     });
+    return withNullableComputedListingFields(listing);
   }
 
   async findAnyBySlug(slug: string) {
@@ -224,55 +285,29 @@ export class BusinessListingRepository {
   }
 
   async listForAdmin() {
-    return await this.prisma.businessListing.findMany({
+    const listings = await this.prisma.businessListing.findMany({
       orderBy: [{ featured: "desc" }, { updatedAt: "desc" }],
       select: businessListingSelect,
     });
+    return listings.map(withComputedListingFields);
   }
 
   async listForOwner(userId: number) {
-    return await this.prisma.businessListing.findMany({
+    const listings = await this.prisma.businessListing.findMany({
       where: {
-        OR: [
-          { ownerUserId: userId },
-          {
-            ownerTeam: {
-              members: {
-                some: {
-                  userId,
-                  role: {
-                    in: [MembershipRole.OWNER, MembershipRole.ADMIN],
-                  },
-                },
-              },
-            },
-          },
-        ],
+        OR: this.getOwnerEditableConditions(userId),
       },
       orderBy: { updatedAt: "desc" },
       select: businessListingSelect,
     });
+    return listings.map(withComputedListingFields);
   }
 
   async userCanEditListing({ listingId, userId }: { listingId: string; userId: number }) {
     const listing = await this.prisma.businessListing.findFirst({
       where: {
         id: listingId,
-        OR: [
-          { ownerUserId: userId },
-          {
-            ownerTeam: {
-              members: {
-                some: {
-                  userId,
-                  role: {
-                    in: [MembershipRole.OWNER, MembershipRole.ADMIN],
-                  },
-                },
-              },
-            },
-          },
-        ],
+        OR: this.getOwnerEditableConditions(userId),
       },
       select: {
         id: true,
@@ -280,6 +315,44 @@ export class BusinessListingRepository {
     });
 
     return !!listing;
+  }
+
+  private getOwnerEditableConditions(userId: number): Prisma.BusinessListingWhereInput[] {
+    const managedTeamCondition = {
+      members: {
+        some: {
+          userId,
+          role: {
+            in: [MembershipRole.OWNER, MembershipRole.ADMIN],
+          },
+        },
+      },
+    };
+
+    return [
+      { ownerUserId: userId },
+      {
+        ownerTeam: managedTeamCondition,
+      },
+      {
+        services: {
+          some: {
+            eventType: {
+              userId,
+            },
+          },
+        },
+      },
+      {
+        services: {
+          some: {
+            eventType: {
+              team: managedTeamCondition,
+            },
+          },
+        },
+      },
+    ];
   }
 
   async upsertListing(input: BusinessListingUpsertInput & { slug: string }) {
@@ -314,8 +387,6 @@ export class BusinessListingRepository {
         website: input.website || null,
         instagram: input.instagram ?? null,
         photos: input.photos,
-        approvalStatus: BusinessListingApprovalStatus.PENDING,
-        visibility: BusinessListingVisibility.DRAFT,
       },
       select: {
         id: true,
@@ -326,6 +397,88 @@ export class BusinessListingRepository {
     await this.syncListingServices(listing.id, input.eventTypeIds);
 
     return await this.findEditableById(listing.id);
+  }
+
+  async submitOwnerEditableListing(input: BusinessOwnerListingUpdateInput & { id: string }) {
+    const listing = await this.prisma.businessListing.update({
+      where: { id: input.id },
+      data: {
+        displayName: input.displayName,
+        description: input.description ?? null,
+        city: input.city,
+        neighborhood: input.neighborhood ?? null,
+        address: input.address ?? null,
+        googlePlaceId: input.googlePlaceId ?? null,
+        latitude: input.latitude ?? null,
+        longitude: input.longitude ?? null,
+        phone: input.phone ?? null,
+        website: input.website || null,
+        instagram: input.instagram ?? null,
+        photos: input.photos,
+        approvalStatus: BusinessListingApprovalStatus.PENDING,
+        visibility: BusinessListingVisibility.DRAFT,
+        submittedAt: new Date(),
+        reviewNote: null,
+        reviewedAt: null,
+        reviewedById: null,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    await this.syncListingCategories(listing.id, input.categorySlugs);
+    await this.syncListingServices(listing.id, input.eventTypeIds);
+
+    return await this.findEditableById(listing.id);
+  }
+
+  async applyAdminListingAction(input: BusinessListingAdminActionInput & { reviewedById: number }) {
+    const now = new Date();
+    const data: Prisma.BusinessListingUpdateInput = {
+      reviewedAt: now,
+      reviewedById: input.reviewedById,
+    };
+
+    if (input.action === "approve_publish") {
+      data.approvalStatus = BusinessListingApprovalStatus.APPROVED;
+      data.visibility = BusinessListingVisibility.PUBLIC;
+      data.reviewNote = null;
+      data.lastPublishedAt = now;
+    }
+    if (input.action === "approve_hidden") {
+      data.approvalStatus = BusinessListingApprovalStatus.APPROVED;
+      data.visibility = BusinessListingVisibility.HIDDEN;
+      data.reviewNote = null;
+    }
+    if (input.action === "request_changes") {
+      data.approvalStatus = BusinessListingApprovalStatus.PENDING;
+      data.visibility = BusinessListingVisibility.DRAFT;
+      data.reviewNote = input.reviewNote || "Please update this listing and resubmit it for review.";
+    }
+    if (input.action === "hide") {
+      data.approvalStatus = BusinessListingApprovalStatus.APPROVED;
+      data.visibility = BusinessListingVisibility.HIDDEN;
+    }
+    if (input.action === "reject") {
+      data.approvalStatus = BusinessListingApprovalStatus.REJECTED;
+      data.visibility = BusinessListingVisibility.HIDDEN;
+      data.reviewNote = input.reviewNote || "This listing was rejected by GoBookME review.";
+    }
+    if (input.action === "feature") {
+      data.featured = true;
+    }
+    if (input.action === "unfeature") {
+      data.featured = false;
+    }
+
+    await this.prisma.businessListing.update({
+      where: { id: input.listingId },
+      data,
+      select: { id: true },
+    });
+
+    return await this.findEditableById(input.listingId);
   }
 
   async createClaimRequest(input: BusinessClaimRequestInput & { requesterId?: number | null }) {
@@ -499,6 +652,11 @@ export class BusinessListingRepository {
       foundingCustomer: input.foundingCustomer ?? false,
       setupPackageStatus: input.setupPackageStatus ?? null,
       paymentWillingness: input.paymentWillingness ?? null,
+      submittedAt: input.submittedAt ?? null,
+      reviewedAt: input.reviewedAt ?? null,
+      reviewedById: input.reviewedById ?? null,
+      reviewNote: input.reviewNote ?? null,
+      lastPublishedAt: input.lastPublishedAt ?? null,
       ...(input.ownerUserId ? { ownerUser: { connect: { id: input.ownerUserId } } } : null),
       ...(input.ownerTeamId ? { ownerTeam: { connect: { id: input.ownerTeamId } } } : null),
     };
@@ -526,22 +684,33 @@ export class BusinessListingRepository {
       foundingCustomer: input.foundingCustomer,
       setupPackageStatus: input.setupPackageStatus ?? null,
       paymentWillingness: input.paymentWillingness ?? null,
+      submittedAt: input.submittedAt,
+      reviewedAt: input.reviewedAt,
+      reviewedById: input.reviewedById,
+      reviewNote: input.reviewNote,
+      lastPublishedAt: input.lastPublishedAt,
       ownerUser: input.ownerUserId ? { connect: { id: input.ownerUserId } } : { disconnect: true },
       ownerTeam: input.ownerTeamId ? { connect: { id: input.ownerTeamId } } : { disconnect: true },
     };
   }
 
   private async syncListingCategories(listingId: string, categorySlugs: string[]) {
-    const categories = await this.prisma.businessCategory.findMany({
-      where: {
-        slug: {
-          in: categorySlugs,
-        },
-      },
-      select: {
-        id: true,
-      },
-    });
+    const uniqueCategorySlugs = Array.from(new Set(categorySlugs));
+    const categories = await this.prisma.$transaction(
+      uniqueCategorySlugs.map((slug) =>
+        this.prisma.businessCategory.upsert({
+          where: { slug },
+          update: {},
+          create: {
+            slug,
+            name: formatCategoryName(slug),
+          },
+          select: {
+            id: true,
+          },
+        })
+      )
+    );
 
     await this.prisma.businessListingCategory.deleteMany({ where: { listingId } });
     if (categories.length === 0) return;
@@ -568,4 +737,35 @@ export class BusinessListingRepository {
       skipDuplicates: true,
     });
   }
+}
+
+function withNullableComputedListingFields(listing: BusinessListingRecord | null) {
+  if (!listing) return null;
+  return withComputedListingFields(listing);
+}
+
+function withComputedListingFields(listing: BusinessListingRecord): BusinessListingDTO {
+  return {
+    ...listing,
+    profileCompleteness: calculateBusinessListingCompleteness({
+      displayName: listing.displayName,
+      description: listing.description,
+      city: listing.city,
+      address: listing.address,
+      phone: listing.phone,
+      website: listing.website,
+      instagram: listing.instagram,
+      photos: listing.photos,
+      categorySlugs: listing.categories.map((item) => item.category.slug),
+      eventTypeIds: listing.services.map((service) => service.eventType.id),
+    }),
+  };
+}
+
+function formatCategoryName(slug: string) {
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
 }

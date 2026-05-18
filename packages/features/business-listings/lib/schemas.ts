@@ -41,6 +41,11 @@ export const businessListingUpsertSchema = z.object({
   foundingCustomer: z.coerce.boolean().optional(),
   setupPackageStatus: z.string().trim().max(120).optional().nullable(),
   paymentWillingness: z.string().trim().max(120).optional().nullable(),
+  submittedAt: z.coerce.date().optional().nullable(),
+  reviewedAt: z.coerce.date().optional().nullable(),
+  reviewedById: z.coerce.number().int().positive().optional().nullable(),
+  reviewNote: z.string().trim().max(1000).optional().nullable(),
+  lastPublishedAt: z.coerce.date().optional().nullable(),
 });
 
 export const businessOwnerListingUpdateSchema = businessListingUpsertSchema.pick({
@@ -96,6 +101,20 @@ export const businessListingAnalyticsSchema = z.object({
   grossBookingValue: z.coerce.number().int().nonnegative().optional().nullable(),
 });
 
+export const businessListingAdminActionSchema = z.object({
+  listingId: z.string().min(1),
+  action: z.enum([
+    "approve_publish",
+    "approve_hidden",
+    "request_changes",
+    "hide",
+    "reject",
+    "feature",
+    "unfeature",
+  ]),
+  reviewNote: z.string().trim().max(1000).optional().nullable(),
+});
+
 export type BusinessListingUpsertInput = z.infer<typeof businessListingUpsertSchema>;
 export type BusinessOwnerListingUpdateInput = z.infer<typeof businessOwnerListingUpdateSchema>;
 export type BusinessOwnerListingSubmitInput = z.infer<typeof businessOwnerListingSubmitSchema>;
@@ -103,3 +122,4 @@ export type BusinessCategoryUpsertInput = z.infer<typeof businessCategoryUpsertS
 export type BusinessClaimRequestInput = z.infer<typeof businessClaimRequestSchema>;
 export type BusinessClaimReviewInput = z.infer<typeof businessClaimReviewSchema>;
 export type BusinessListingAnalyticsInput = z.infer<typeof businessListingAnalyticsSchema>;
+export type BusinessListingAdminActionInput = z.infer<typeof businessListingAdminActionSchema>;

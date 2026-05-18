@@ -1,5 +1,5 @@
-import { WEBAPP_URL } from "@calcom/lib/constants";
 import { loadTranslations } from "@calcom/i18n/server";
+import { WEBAPP_URL } from "@calcom/lib/constants";
 import { buildLegacyCtx, decodeParams } from "@lib/buildLegacyCtx";
 import { getServerSideProps } from "@server/lib/[user]/[type]/getServerSideProps";
 import type { PageProps } from "app/_types";
@@ -8,7 +8,8 @@ import { CustomI18nProvider } from "app/CustomI18nProvider";
 import { withAppDirSsr } from "app/WithAppDirSsr";
 import type { Metadata } from "next";
 import { cookies, headers } from "next/headers";
-import type React from "react";
+import { CityDirectoryPageView } from "~/business/components/GoBookMeMarketplace";
+import { getRootCityCategoryDirectoryData } from "~/business/lib/city-directory";
 import type { PageProps as LegacyPageProps } from "~/users/views/users-type-public-view";
 import LegacyPage from "~/users/views/users-type-public-view";
 
@@ -16,7 +17,27 @@ const getData: (ctx: ReturnType<typeof buildLegacyCtx>) => Promise<LegacyPagePro
   withAppDirSsr<LegacyPageProps>(getServerSideProps);
 
 const ServerPage = async ({ params, searchParams }: PageProps): Promise<JSX.Element> => {
-  const legacyCtx = buildLegacyCtx(await headers(), await cookies(), await params, await searchParams);
+  const resolvedParams = await params;
+  const resolvedSearchParams = await searchParams;
+  const decodedParams = decodeParams(resolvedParams);
+  const cityDirectory = await getRootCityCategoryDirectoryData({
+    categorySegment: decodedParams.type,
+    citySegment: decodedParams.user,
+  });
+
+  if (cityDirectory) {
+    return (
+      <CityDirectoryPageView
+        activeCategory={cityDirectory.activeCategory}
+        activeCategorySlug={cityDirectory.categorySlug}
+        cityName={cityDirectory.cityName}
+        citySlug={cityDirectory.citySlug}
+        listings={cityDirectory.listings}
+      />
+    );
+  }
+
+  const legacyCtx = buildLegacyCtx(await headers(), await cookies(), resolvedParams, resolvedSearchParams);
   const props = await getData(legacyCtx);
 
   const locale = props.eventData?.interfaceLanguage;
@@ -34,7 +55,24 @@ const ServerPage = async ({ params, searchParams }: PageProps): Promise<JSX.Elem
 };
 
 export const generateMetadata = async ({ params, searchParams }: PageProps): Promise<Metadata> => {
-  const legacyCtx = buildLegacyCtx(await headers(), await cookies(), await params, await searchParams);
+  const resolvedParams = await params;
+  const resolvedSearchParams = await searchParams;
+  const decodedParams = decodeParams(resolvedParams);
+  const cityDirectory = await getRootCityCategoryDirectoryData({
+    categorySegment: decodedParams.type,
+    citySegment: decodedParams.user,
+  });
+
+  if (cityDirectory) {
+    return {
+      title: `Book ${cityDirectory.activeCategory.name.toLowerCase()} in ${cityDirectory.cityName} | GoBookME`,
+      description:
+        cityDirectory.activeCategory.description ??
+        `Find and book ${cityDirectory.activeCategory.name.toLowerCase()} services in ${cityDirectory.cityName}.`,
+    };
+  }
+
+  const legacyCtx = buildLegacyCtx(await headers(), await cookies(), resolvedParams, resolvedSearchParams);
   const props = await getData(legacyCtx);
 
   const { booking, isSEOIndexable = true, eventData, isBrandingHidden } = props;
@@ -50,7 +88,6 @@ export const generateMetadata = async ({ params, searchParams }: PageProps): Pro
         username: `${user.username}`,
       })) || [],
   };
-  const decodedParams = decodeParams(await params);
   const metadata = await generateMeetingMetadata(
     meeting,
     (t) => `${rescheduleUid && !!booking ? t("reschedule") : ""} ${title} | ${profileName}`,

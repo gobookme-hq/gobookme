@@ -5,36 +5,31 @@
 # Then every push to the connected GitHub branch auto-deploys.
 
 runConfig:
-  # Node.js 22 = LTS at time of writing; matches the project's engine range
   runtime: nodejs22
-  # Cloud Run concurrency: how many requests each instance handles simultaneously
   concurrency: 80
-  # Scale to zero when idle (cost-saving); bump minInstances to 1 for zero cold-starts
-  minInstances: 0
-  maxInstances: 100
-  # This is a large Next.js monorepo — give it room to breathe
+  minInstances: 1
+  maxInstances: 50
   cpu: 2
-  memoryMiB: 2048
+  memoryMiB: 4096
 
 env:
   # ── Build-time only ─────────────────────────────────────────────────────────
   - variable: BUILD_STANDALONE
-    value: "true"         # Activates next.config.ts standalone output for Cloud Run
+    value: "true"
     availability:
       - BUILD
 
   - variable: NODE_OPTIONS
-    value: "--max-old-space-size=4096"   # Turborepo + Next.js build needs memory headroom
+    value: "--max-old-space-size=4096"
     availability:
       - BUILD
 
-  # Skip Sentry release upload during CI builds (no token needed)
   - variable: SENTRY_AUTH_TOKEN
     value: ""
     availability:
       - BUILD
 
-  # ── Public / non-sensitive (baked into the JS bundle at build time) ─────────
+  # ── Public / non-sensitive runtime + build ──────────────────────────────────
   - variable: NEXT_PUBLIC_APP_NAME
     value: gobookme
     availability:
@@ -54,56 +49,207 @@ env:
       - RUNTIME
 
   - variable: NEXT_PUBLIC_DISABLE_SIGNUP
-    value: ""             # Leave empty to allow signups
+    value: ""
     availability:
       - BUILD
       - RUNTIME
 
-  # ── Secrets (stored in Google Cloud Secret Manager — see setup guide below) ─
-  # Create each secret with:
-  #   gcloud secrets create SECRET_NAME --data-file=- <<< "your-value"
-
-  - variable: DATABASE_URL
-    secret: DATABASE_URL           # PostgreSQL connection string (e.g. from Neon)
+  - variable: CALCOM_TELEMETRY_DISABLED
+    value: "1"
     availability:
       - BUILD
       - RUNTIME
 
-  - variable: DATABASE_DIRECT_URL
-    secret: DATABASE_DIRECT_URL    # Same as DATABASE_URL unless using a pooler
+  - variable: TZ
+    value: UTC
     availability:
       - BUILD
       - RUNTIME
 
-  - variable: NEXTAUTH_SECRET
-    secret: NEXTAUTH_SECRET        # Random 32-char string: openssl rand -base64 32
+  - variable: CRON_ENABLE_APP_SYNC
+    value: "false"
     availability:
       - RUNTIME
 
+  - variable: ENABLE_ASYNC_TASKER
+    value: "false"
+    availability:
+      - RUNTIME
+
+  # These are public-facing URLs — not sensitive, but must be set before first deploy.
+  # Replace with your actual domain (or Firebase App Hosting URL initially).
   - variable: NEXTAUTH_URL
-    secret: NEXTAUTH_URL           # Your Firebase Hosting URL: https://gobookme-XXXX.web.app
+    value: https://gobookme.app
     availability:
       - BUILD
       - RUNTIME
 
   - variable: NEXT_PUBLIC_WEBAPP_URL
-    secret: NEXT_PUBLIC_WEBAPP_URL  # Same as NEXTAUTH_URL (or your custom domain)
+    value: https://gobookme.app
     availability:
       - BUILD
       - RUNTIME
 
+  - variable: NEXT_PUBLIC_WEBSITE_URL
+    value: https://gobookme.app
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_EMBED_LIB_URL
+    value: https://gobookme.app/embed/embed.js
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: ALLOWED_HOSTNAMES
+    value: '"gobookme.app"'
+    availability:
+      - RUNTIME
+
+  # ── Secrets (stored in Google Cloud Secret Manager) ─────────────────────────
+  # Create each secret once:
+  #   echo -n "value" | gcloud secrets create SECRET_NAME --data-file=-
+  #
+  # SECURITY: DATABASE_URL is RUNTIME only — credentials must never appear in
+  # build layers/artifacts. Prisma generates types from schema, not live DB.
+
+  - variable: DATABASE_URL
+    secret: DATABASE_URL
+    availability:
+      - RUNTIME
+
+  - variable: DATABASE_DIRECT_URL
+    secret: DATABASE_DIRECT_URL
+    availability:
+      - RUNTIME
+
+  - variable: NEXTAUTH_SECRET
+    secret: NEXTAUTH_SECRET
+    availability:
+      - RUNTIME
+
   - variable: CALENDSO_ENCRYPTION_KEY
-    secret: CALENDSO_ENCRYPTION_KEY  # Exactly 32 chars: openssl rand -base64 24
+    secret: CALENDSO_ENCRYPTION_KEY
     availability:
       - RUNTIME
 
   - variable: GOOGLE_API_CREDENTIALS
-    secret: GOOGLE_API_CREDENTIALS   # JSON: {"client_id":"...","client_secret":"..."}
+    secret: GOOGLE_API_CREDENTIALS
     availability:
       - RUNTIME
 
+  - variable: GOOGLE_CALENDAR_API_KEY
+    secret: GOOGLE_CALENDAR_API_KEY
+    availability:
+      - RUNTIME
+
+  # Cron auth — routes accept either CRON_API_KEY (plain) or Bearer CRON_SECRET
+  - variable: CRON_API_KEY
+    secret: CRON_API_KEY
+    availability:
+      - RUNTIME
+
+  - variable: CRON_SECRET
+    secret: CRON_SECRET
+    availability:
+      - RUNTIME
+
+  # Email (Sendgrid)
+  - variable: SENDGRID_API_KEY
+    secret: SENDGRID_API_KEY
+    availability:
+      - RUNTIME
+
+  - variable: SENDGRID_EMAIL
+    secret: SENDGRID_EMAIL
+    availability:
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_SENDGRID_SENDER_NAME
+    secret: NEXT_PUBLIC_SENDGRID_SENDER_NAME
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # Stripe
+  - variable: STRIPE_CLIENT_ID
+    secret: STRIPE_CLIENT_ID
+    availability:
+      - RUNTIME
+
+  - variable: STRIPE_PRIVATE_KEY
+    secret: STRIPE_PRIVATE_KEY
+    availability:
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_STRIPE_PUBLIC_KEY
+    secret: NEXT_PUBLIC_STRIPE_PUBLIC_KEY
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: STRIPE_WEBHOOK_SECRET
+    secret: STRIPE_WEBHOOK_SECRET
+    availability:
+      - RUNTIME
+
+  - variable: PAYMENT_FEE_FIXED
+    secret: PAYMENT_FEE_FIXED
+    availability:
+      - RUNTIME
+
+  - variable: PAYMENT_FEE_PERCENTAGE
+    secret: PAYMENT_FEE_PERCENTAGE
+    availability:
+      - RUNTIME
+
+  # Firebase SDK (public keys — stored as secrets to keep them out of source control
+  # even though they are not truly secret; they're safe to expose in browsers)
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    secret: NEXT_PUBLIC_FIREBASE_API_KEY
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    secret: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    secret: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    secret: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    secret: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    secret: NEXT_PUBLIC_FIREBASE_APP_ID
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: FIREBASE_PROJECT_ID
+    secret: FIREBASE_PROJECT_ID
+    availability:
+      - RUNTIME
+
+  # Email fallback (SMTP — if not using Sendgrid)
   - variable: EMAIL_FROM
-    secret: EMAIL_FROM               # SMTP sender: "notifications@gobookme.com"
+    secret: EMAIL_FROM
     availability:
       - RUNTIME
 

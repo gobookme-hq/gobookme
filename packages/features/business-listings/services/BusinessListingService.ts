@@ -18,6 +18,7 @@ import {
   businessCategoryUpsertSchema,
   businessClaimRequestSchema,
   businessClaimReviewSchema,
+  businessListingAdminActionSchema,
   businessListingAnalyticsSchema,
   businessListingUpsertSchema,
   businessOwnerListingSubmitSchema,
@@ -68,6 +69,17 @@ export class BusinessListingService {
     return listing;
   }
 
+  async getPreviewListing({ isAdmin, slug, userId }: { isAdmin: boolean; slug: string; userId?: number }) {
+    const listing = await this.repository.findPreviewableBySlug(slug);
+    if (!listing) return null;
+    if (isAdmin) return listing;
+    if (!userId) return null;
+
+    const canEdit = await this.repository.userCanEditListing({ listingId: listing.id, userId });
+    if (!canEdit) return null;
+    return listing;
+  }
+
   async listAdminListings() {
     const [listings, metrics, claimRequests] = await Promise.all([
       this.repository.listForAdmin(),
@@ -80,6 +92,10 @@ export class BusinessListingService {
 
   async listOwnerListings(userId: number) {
     return await this.repository.listForOwner(userId);
+  }
+
+  async userCanEditListing({ listingId, userId }: { listingId: string; userId: number }) {
+    return await this.repository.userCanEditListing({ listingId, userId });
   }
 
   async getEditableListingForOwner({ listingId, userId }: { listingId: string; userId: number }) {
@@ -123,7 +139,15 @@ export class BusinessListingService {
       throw ErrorWithCode.Factory.Forbidden("You do not have permission to edit this business listing");
     }
 
-    await this.validateOwnerEventTypes({ eventTypeIds: parsed.eventTypeIds, userId });
+    const listing = await this.repository.findEditableById(parsed.id);
+    if (!listing) throw ErrorWithCode.Factory.NotFound("Business listing not found");
+
+    await this.validateOwnerEventTypes({
+      eventTypeIds: parsed.eventTypeIds,
+      ownerTeamId: listing.ownerTeamId,
+      ownerUserId: listing.ownerUserId,
+      userId,
+    });
     const listingInput = await this.prepareListingInput(parsed);
 
     return await this.repository.updateOwnerEditableListing({
@@ -132,9 +156,37 @@ export class BusinessListingService {
     });
   }
 
+  async submitExistingOwnerListing({ input, userId }: { input: unknown; userId: number }) {
+    const parsed = businessOwnerListingUpdateSchema.parse(input);
+    if (!parsed.id) {
+      throw ErrorWithCode.Factory.BadRequest("Business listing id is required");
+    }
+
+    const canEdit = await this.repository.userCanEditListing({ listingId: parsed.id, userId });
+    if (!canEdit) {
+      throw ErrorWithCode.Factory.Forbidden("You do not have permission to edit this business listing");
+    }
+
+    const listing = await this.repository.findEditableById(parsed.id);
+    if (!listing) throw ErrorWithCode.Factory.NotFound("Business listing not found");
+
+    await this.validateOwnerEventTypes({
+      eventTypeIds: parsed.eventTypeIds,
+      ownerTeamId: listing.ownerTeamId,
+      ownerUserId: listing.ownerUserId,
+      userId,
+    });
+    const listingInput = await this.prepareListingInput(parsed);
+
+    return await this.repository.submitOwnerEditableListing({
+      ...listingInput,
+      id: parsed.id,
+    });
+  }
+
   async submitOwnerListing({ input, userId }: { input: unknown; userId: number }) {
     const parsed = businessOwnerListingSubmitSchema.parse(input);
-    await this.validateOwnerEventTypes({ eventTypeIds: parsed.eventTypeIds, userId });
+    await this.validateOwnerEventTypes({ eventTypeIds: parsed.eventTypeIds, ownerUserId: userId, userId });
     const listingInput = await this.prepareListingInput(parsed);
 
     return await this.repository.upsertListing({
@@ -143,7 +195,28 @@ export class BusinessListingService {
       approvalStatus: BusinessListingApprovalStatus.PENDING,
       claimStatus: BusinessListingClaimStatus.CLAIMED,
       visibility: BusinessListingVisibility.DRAFT,
+      submittedAt: new Date(),
+      reviewNote: null,
       ownerUserId: userId,
+    });
+  }
+
+  async applyAdminListingAction(input: unknown, reviewedById: number) {
+    const parsed = businessListingAdminActionSchema.parse(input);
+    const listing = await this.repository.findEditableById(parsed.listingId);
+    if (!listing) throw ErrorWithCode.Factory.NotFound("Business listing not found");
+
+    if (
+      parsed.action === "feature" &&
+      (listing.approvalStatus !== BusinessListingApprovalStatus.APPROVED ||
+        listing.visibility !== BusinessListingVisibility.PUBLIC)
+    ) {
+      throw ErrorWithCode.Factory.BadRequest("Only live listings can be featured");
+    }
+
+    return await this.repository.applyAdminListingAction({
+      ...parsed,
+      reviewedById,
     });
   }
 
@@ -211,31 +284,41 @@ export class BusinessListingService {
 
   private async validateOwnerEventTypes({
     eventTypeIds,
+    ownerTeamId,
+    ownerUserId,
     userId,
   }: {
     eventTypeIds: number[];
+    ownerTeamId?: number | null;
+    ownerUserId?: number | null;
     userId: number;
   }) {
     if (eventTypeIds.length === 0) return;
 
-    const eventTypeCount = await this.prisma.eventType.count({
-      where: {
-        id: { in: eventTypeIds },
-        OR: [
-          { userId },
-          {
-            team: {
-              members: {
-                some: {
-                  userId,
-                  role: {
-                    in: [MembershipRole.OWNER, MembershipRole.ADMIN],
+    const ownershipScope = ownerTeamId
+      ? [{ teamId: ownerTeamId }]
+      : ownerUserId
+        ? [{ userId: ownerUserId }]
+        : [
+            { userId },
+            {
+              team: {
+                members: {
+                  some: {
+                    userId,
+                    role: {
+                      in: [MembershipRole.OWNER, MembershipRole.ADMIN],
+                    },
                   },
                 },
               },
             },
-          },
-        ],
+          ];
+
+    const eventTypeCount = await this.prisma.eventType.count({
+      where: {
+        id: { in: eventTypeIds },
+        OR: ownershipScope,
       },
     });
 

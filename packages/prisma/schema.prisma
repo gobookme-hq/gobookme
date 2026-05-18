@@ -712,6 +712,11 @@ model BusinessListing {
   foundingCustomer   Boolean                       @default(false)
   setupPackageStatus String?
   paymentWillingness String?
+  submittedAt        DateTime?
+  reviewedAt         DateTime?
+  reviewedById       Int?
+  reviewNote         String?
+  lastPublishedAt    DateTime?
   ownerUserId        Int?
   ownerUser          User?                         @relation("BusinessListingOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
   ownerTeamId        Int?
@@ -728,6 +733,8 @@ model BusinessListing {
   @@index([neighborhood])
   @@index([ownerUserId])
   @@index([ownerTeamId])
+  @@index([submittedAt])
+  @@index([reviewedById])
 }
 
 model BusinessCategory {

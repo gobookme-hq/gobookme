@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { getAppWithMetadata } from "@calcom/app-store/_appRegistry";
 import { getAppAssetFullPath } from "@calcom/app-store/getAppAssetFullPath";
+import { GOBOOKME_ALLOWED_APP_SLUGS } from "@calcom/app-store/gobookme-allowed-apps";
 import { IS_PRODUCTION } from "@calcom/lib/constants";
 import { prisma } from "@calcom/prisma";
 import logger from "@calcom/lib/logger";
@@ -67,6 +68,8 @@ export const sourceSchema = z.object({
 export type AppDataProps = NonNullable<Awaited<ReturnType<typeof getStaticProps>>>;
 
 export const getStaticProps = async (slug: string) => {
+  if (!GOBOOKME_ALLOWED_APP_SLUGS.has(slug.toLowerCase())) return null;
+
   const appMeta = await getAppWithMetadata({
     slug,
   });

@@ -60,6 +60,7 @@ function listingInputFromFormData(formData: FormData) {
     visibility: nullableString(formData.get("visibility")) ?? undefined,
     featured: formData.get("featured") === "true",
     foundingCustomer: formData.get("foundingCustomer") === "true",
+    reviewNote: nullableString(formData.get("reviewNote")),
   };
 }
 
@@ -83,36 +84,88 @@ export async function saveAdminBusinessListingAction(formData: FormData) {
   if (session.user.role !== "ADMIN") redirect("/settings/my-account/profile");
 
   const service = new BusinessListingService(prisma);
-  await service.upsertAdminListing(listingInputFromFormData(formData));
+  const listing = await service.upsertAdminListing(listingInputFromFormData(formData));
 
   revalidatePath("/settings/admin/business-listings");
   revalidatePath("/champaign");
+  if (listing) {
+    revalidatePath(`/${listing.city}`);
+    revalidatePath(`/business/${listing.slug}`);
+  }
+  redirect("/settings/admin/business-listings");
+}
+
+export async function applyAdminBusinessListingAction(formData: FormData) {
+  const session = await getRequiredSession();
+  if (session.user.role !== "ADMIN") redirect("/settings/my-account/profile");
+
+  const service = new BusinessListingService(prisma);
+  const listing = await service.applyAdminListingAction(
+    {
+      listingId: nullableString(formData.get("listingId")),
+      action: nullableString(formData.get("action")),
+      reviewNote: nullableString(formData.get("reviewNote")),
+    },
+    session.user.id
+  );
+
+  revalidatePath("/settings/admin/business-listings");
+  revalidatePath("/champaign");
+  if (listing) {
+    revalidatePath(`/${listing.city}`);
+    revalidatePath(`/business/${listing.slug}`);
+  }
   redirect("/settings/admin/business-listings");
 }
 
 export async function saveOwnerBusinessListingAction(formData: FormData) {
   const session = await getRequiredSession();
   const service = new BusinessListingService(prisma);
-  await service.updateOwnerListing({
+  const listing = await service.updateOwnerListing({
     userId: session.user.id,
     input: listingInputFromFormData(formData),
   });
 
   revalidatePath("/business/manage");
   revalidatePath("/champaign");
+  if (listing) {
+    revalidatePath(`/${listing.city}`);
+    revalidatePath(`/business/${listing.slug}`);
+  }
   redirect("/business/manage");
 }
 
-export async function submitOwnerBusinessListingAction(formData: FormData) {
+export async function submitExistingOwnerBusinessListingAction(formData: FormData) {
   const session = await getRequiredSession();
   const service = new BusinessListingService(prisma);
-  await service.submitOwnerListing({
+  const listing = await service.submitExistingOwnerListing({
     userId: session.user.id,
     input: listingInputFromFormData(formData),
   });
 
   revalidatePath("/business/manage");
   revalidatePath("/settings/admin/business-listings");
+  if (listing) {
+    revalidatePath(`/${listing.city}`);
+    revalidatePath(`/business/${listing.slug}`);
+  }
+  redirect("/business/manage?submitted=1");
+}
+
+export async function submitOwnerBusinessListingAction(formData: FormData) {
+  const session = await getRequiredSession();
+  const service = new BusinessListingService(prisma);
+  const listing = await service.submitOwnerListing({
+    userId: session.user.id,
+    input: listingInputFromFormData(formData),
+  });
+
+  revalidatePath("/business/manage");
+  revalidatePath("/settings/admin/business-listings");
+  if (listing) {
+    revalidatePath(`/${listing.city}`);
+    revalidatePath(`/business/${listing.slug}`);
+  }
   redirect("/business/manage?submitted=1");
 }
 

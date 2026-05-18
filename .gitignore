@@ -4,6 +4,9 @@
 .env
 !packages/prisma/.env
 
+# Firebase infra setup script — fill in secrets locally, never commit with values
+scripts/setup-firebase-infra.sh
+
 # dependencies
 node_modules
 .pnp

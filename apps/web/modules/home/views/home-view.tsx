@@ -153,6 +153,26 @@ function BookingLinkCard({ slug }: { slug: string }) {
   );
 }
 
+function BusinessStoreCard() {
+  return (
+    <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5 shadow-sm dark:border-blue-900/50 dark:bg-blue-950/20">
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white">
+        <Icon name="building" className="h-5 w-5" />
+      </div>
+      <h3 className="mt-4 text-sm font-semibold text-emphasis">Manage your business store</h3>
+      <p className="mt-2 text-sm leading-6 text-subtle">
+        Update your listing, services, payments, team members, and public booking page from one place.
+      </p>
+      <Link
+        href="/business/manage"
+        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700">
+        Open Business Manager
+        <Icon name="arrow-right" className="h-4 w-4" />
+      </Link>
+    </div>
+  );
+}
+
 export default function HomeView({
   userName,
   bookingPageSlug,
@@ -182,6 +202,7 @@ export default function HomeView({
   const totalEventTypes = sumOfEventTypes + (sumOfTeamEventTypes ?? 0);
 
   const setupItems: SetupItem[] = [
+    { label: "Manage your business listing", href: "/business/manage", done: false },
     { label: "Create your first booking page", href: "/event-types/new", done: totalEventTypes > 0 },
     { label: "Connect your calendar", href: "/apps/installed/calendar", done: hasCalendar },
     { label: "Set your availability", href: "/availability", done: hasAvailability },
@@ -259,6 +280,7 @@ export default function HomeView({
 
         {/* Right: sidebar cards */}
         <div className="space-y-6">
+          <BusinessStoreCard />
           <SetupChecklist items={setupItems} />
           {bookingPageSlug && <BookingLinkCard slug={bookingPageSlug} />}
         </div>

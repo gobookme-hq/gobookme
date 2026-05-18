@@ -1,5 +1,6 @@
 import { appStoreMetadata } from "@calcom/app-store/appStoreMetaData";
 import { getAllDelegationCredentialsForUser } from "@calcom/app-store/delegationCredential";
+import { GOBOOKME_ALLOWED_APP_SLUGS } from "@calcom/app-store/gobookme-allowed-apps";
 import { getAppFromSlug } from "@calcom/app-store/utils";
 import type { UserAdminTeams } from "@calcom/features/users/repositories/UserRepository";
 import getInstallCountPerApp from "@calcom/lib/apps/getInstallCountPerApp";
@@ -39,7 +40,7 @@ export async function getAppWithMetadata(app: { dirName: string } | { slug: stri
 /** Mainly to use in listings for the frontend, use in getStaticProps or getServerSideProps */
 export async function getAppRegistry() {
   const dbApps = await prisma.app.findMany({
-    where: { enabled: true },
+    where: { enabled: true, slug: { in: Array.from(GOBOOKME_ALLOWED_APP_SLUGS) } },
     select: { dirName: true, slug: true, categories: true, enabled: true, createdAt: true },
   });
   const apps = [] as App[];
@@ -66,7 +67,7 @@ export async function getAppRegistryWithCredentials(userId: number, userAdminTea
   // Get teamIds to grab existing credentials
 
   const dbApps = await prisma.app.findMany({
-    where: { enabled: true },
+    where: { enabled: true, slug: { in: Array.from(GOBOOKME_ALLOWED_APP_SLUGS) } },
     select: {
       ...safeAppSelect,
       credentials: {
