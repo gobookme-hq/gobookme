@@ -59,7 +59,7 @@
     "lint:fix": "turbo lint:fix",
     "lint:report": "turbo lint:report",
     "lint": "turbo lint",
-    "postinstall": "(node_modules/.bin/husky install || true) && turbo run post-install",
+    "postinstall": "(node_modules/.bin/husky install || true) && (test ! -x node_modules/.bin/turbo || node_modules/.bin/turbo run post-install)",
     "pre-commit": "lint-staged",
     "predev": "echo 'Checking env files'",
     "prisma": "yarn workspace @calcom/prisma prisma",
